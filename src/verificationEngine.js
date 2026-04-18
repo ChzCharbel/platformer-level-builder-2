@@ -1,92 +1,98 @@
 require('dotenv').config();
 const OpenAI = require('openai');
 
-// K2 Think V2 by MBZUAI — OpenAI-compatible endpoint
 const K2_BASE_URL = process.env.K2_API_BASE_URL || 'https://api.k2think.ai/v1';
 const K2_MODEL    = process.env.K2_MODEL        || 'MBZUAI-IFM/K2-Think-v2';
 
+// ---------------------------------------------------------------------------
+
 /**
- * Build a compact, physics-rich prompt for K2 to reason over.
+ * Convert grid to a compact level description for K2.
  */
 function buildPrompt(grid, physicsParams) {
   const { gravity, jumpStrength, moveSpeed, tileSize } = physicsParams;
 
-  // Derived kinematic envelope — concrete numbers K2 can reason with
-  const tPeak          = jumpStrength / gravity;
-  const maxRisePx      = 0.5 * gravity * tPeak * tPeak;
-  const tLand          = 2 * tPeak;
-  const maxRangePx     = moveSpeed * tLand;
-  const maxRiseTiles   = maxRisePx  / tileSize;
-  const maxRangeTiles  = maxRangePx / tileSize;
-
-  // Collect key tiles
-  const surfaces = [], spikes = [], platforms = [];
+  const surfaces = [], spikes = [];
   let playerPos = null, goalPos = null;
 
   for (let r = 0; r < grid.length; r++) {
     for (let c = 0; c < grid[0].length; c++) {
       const cell = grid[r][c];
-      if (cell === 'P') playerPos = { x: c, y: r };
-      else if (cell === 'G') goalPos = { x: c, y: r };
-      else if (cell === 'S') spikes.push({ x: c, y: r });
+      if      (cell === 'P') playerPos = { col: c, row: r };
+      else if (cell === 'G') goalPos   = { col: c, row: r };
+      else if (cell === 'S') spikes.push({ col: c, row: r });
       else if (cell === 1) {
         const above = r === 0 ? 1 : grid[r - 1][c];
-        if (above !== 1) surfaces.push({ x: c, y: r });
-        platforms.push({ x: c, y: r });
+        if (above !== 1) surfaces.push({ col: c, row: r });
       }
     }
   }
 
-  return `You are a physics engine. Analyse a 2-D platformer level for solvability.
+  if (!playerPos || !goalPos) {
+    return null; // signal missing P/G
+  }
 
-## Coordinate system
-- Origin (0,0) is top-left. x = column (right), y = row (down).
+  // Group surface tiles into platform spans
+  const sorted = [...surfaces].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col);
+  const platforms = [];
+  for (const t of sorted) {
+    const last = platforms[platforms.length - 1];
+    if (last && last.row === t.row && last.maxCol + 1 >= t.col) {
+      last.maxCol = Math.max(last.maxCol, t.col);
+    } else {
+      platforms.push({ id: platforms.length, row: t.row, minCol: t.col, maxCol: t.col });
+    }
+  }
 
-## Physics constants
-  gravity       = ${gravity} px/s²
-  jump_strength = ${jumpStrength} px/s  (vy₀ = −${jumpStrength}, upward)
-  move_speed    = ${moveSpeed} px/s
-  tile_size     = ${tileSize} px
+  const platformList = platforms
+    .map(p => `  P${p.id}: row ${p.row}, cols ${p.minCol}–${p.maxCol}`)
+    .join('\n');
 
-## Derived jump envelope
-  t_peak       = ${tPeak.toFixed(4)} s
-  max_rise     = ${maxRisePx.toFixed(1)} px = ${maxRiseTiles.toFixed(2)} tiles
-  t_land       = ${tLand.toFixed(4)} s
-  max_range_x  = ${maxRangePx.toFixed(1)} px = ${maxRangeTiles.toFixed(2)} tiles
+  const spikeList = spikes.length
+    ? spikes.map(s => `(col ${s.col}, row ${s.row})`).join(', ')
+    : 'none';
 
-## Level elements
-  Player spawn (P): ${playerPos ? JSON.stringify(playerPos) : 'MISSING'}
-  Goal (G):         ${goalPos   ? JSON.stringify(goalPos)   : 'MISSING'}
-  Spikes (S):       ${JSON.stringify(spikes)}
-  Platform surfaces (standable top edges): ${JSON.stringify(surfaces)}
-  All solid tiles:  ${JSON.stringify(platforms)}
+  const diagSpeed = (moveSpeed / Math.SQRT2).toFixed(2);
 
-## Task
-1. If P or G is missing → unsolvable.
-2. For each pair of surface tiles, check if a jump from A to B is physically possible:
-     a. Δx = |xB − xA|, Δy = yA − yB (positive = B is higher).
-     b. Rising (Δy > 0): require max_rise ≥ Δy × tile_size.
-     c. Falling (Δy ≤ 0): solve flight time t from kinematics, verify v_h·t ≥ Δx × tile_size.
-     d. No solid tile blocks the arc.
-3. BFS/DFS reachability from P to G using the jump graph.
-4. List bottlenecks — gaps impossible to cross.
+  return `You are checking whether a player character can make it from the START to the FINISH in a 2-D jump-and-run game. Use simple, fun words a 10-year-old would understand.
 
-## Required output
-Respond ONLY with valid JSON (no markdown, no extra text):
+HOW THE CHARACTER MOVES:
+  - Gravity pulls the character DOWN at ${gravity} px every second squared.
+  - When the character jumps, they shoot UP at ${jumpStrength} px/s.
+  - When running left or right on flat ground, they move at ${moveSpeed} px/s.
+  - IMPORTANT — diagonal movement rule: when the character moves sideways AND up/down at the same time (like jumping across a gap), the total speed must stay the same size. So the sideways speed becomes ${diagSpeed} px/s (= ${moveSpeed} / √2) and the up/down speed becomes ${diagSpeed} px/s (= ${jumpStrength} / √2). Think of it like a pizza slice — if you keep the whole slice the same size but tilt it, each side gets shorter.
+  - Each tile is ${tileSize} pixels wide and tall.
+  - Jump path formula: sideways distance x(t) = ${diagSpeed} × t, up/down position y(t) = −${diagSpeed} × t + 0.5 × ${gravity} × t²  (positive y = going down).
+
+THE LEVEL (column 0 = left side, row 0 = top):
+  START (player): col ${playerPos.col}, row ${playerPos.row}
+  FINISH (goal):  col ${goalPos.col}, row ${goalPos.row}
+  Danger spikes:  ${spikeList}
+
+FLOORS THE CHARACTER CAN STAND ON:
+${platformList}
+
+YOUR JOB:
+1. Figure out which floor the character starts on and which floor the finish is on.
+2. Check every possible jump between floors using the movement rules above (remember to use the diagonal speed ${diagSpeed} px/s for both sideways and up/down when jumping across a gap).
+3. See if there is any path of jumps that gets the character from the start floor to the finish floor.
+4. If they can make it, list the floors in order.
+5. If they cannot make it, say where they get stuck.
+
+Return ONLY this JSON object — no words outside it:
 {
-  "solvable": <boolean>,
-  "proof": "<concise path or reason for failure>",
-  "bottlenecks": [
-    { "x": <col>, "y": <row>, "reason": "<why this jump fails>" }
-  ]
+  "solvable": <true|false>,
+  "proof": "<one sentence explaining why, using simple words>",
+  "kid_summary": "<one fun, encouraging sentence ≤20 words that a 10-year-old would love to read>",
+  "bottlenecks": [{ "x": <col>, "y": <row>, "reason": "<fun kid-friendly reason why they get stuck here>" }],
+  "solutionPath": [{ "col": <col>, "row": <row> }] or null
 }`;
 }
 
+// ---------------------------------------------------------------------------
+
 /**
- * K2 Think V2 streams reasoning inside <think>…</think> tags embedded in the
- * content delta. This state machine splits the stream into thinking vs answer
- * chunks and yields them separately.
- *
+ * State-machine stream parser for <think>…</think> tags.
  * Yields: { type: 'thinking'|'answer'|'done', text?, result? }
  */
 async function* streamK2Verification(prompt) {
@@ -100,38 +106,37 @@ async function* streamK2Verification(prompt) {
     messages: [
       {
         role: 'system',
-        content: 'You are a JSON-only responder. Your entire response must be a single valid JSON object. Do not write any explanation, reasoning, or text outside the JSON object.',
+        content: 'You are a JSON-only responder. Your entire response must be a single valid JSON object. Do not write any explanation or text outside the JSON object.',
       },
       { role: 'user', content: prompt },
     ],
     stream: true,
     temperature: 0.1,
-    max_tokens: 16384,
+    max_tokens: 4000,
     extra_body: {
       chat_template_kwargs: { reasoning_effort: 'high' },
     },
   });
 
-  let rawBuffer  = '';
-  let answerBuffer = '';
+  let rawBuffer = '';
+  let inThink   = false;
+  let holdover  = '';
 
-  // State machine: track whether the stream cursor is inside <think>…</think>
-  let inThink  = false;
-  let holdover = '';   // partial tag accumulation
+  const OPEN_TAG  = '<think>';
+  const CLOSE_TAG = '</think>';
 
   for await (const chunk of stream) {
+    const reasoningContent = chunk.choices?.[0]?.delta?.reasoning_content;
+    if (reasoningContent) yield { type: 'thinking', text: reasoningContent };
+
     const text = chunk.choices?.[0]?.delta?.content;
     if (!text) continue;
 
     rawBuffer += text;
     holdover  += text;
 
-    // Process holdover character-by-character to detect tag boundaries
-    let out = holdover;
+    let out  = holdover;
     holdover = '';
-
-    const OPEN_TAG  = '<think>';
-    const CLOSE_TAG = '</think>';
 
     let i = 0;
     while (i < out.length) {
@@ -139,10 +144,10 @@ async function* streamK2Verification(prompt) {
         const openIdx = out.indexOf(OPEN_TAG, i);
         if (openIdx === -1) {
           const tail = out.slice(i);
-          const partialMatch = longestPrefixSuffix(tail, OPEN_TAG);
-          if (partialMatch > 0) {
-            holdover = tail.slice(tail.length - partialMatch);
-            const emit = tail.slice(0, tail.length - partialMatch);
+          const pm = longestPrefixSuffix(tail, OPEN_TAG);
+          if (pm > 0) {
+            holdover = tail.slice(tail.length - pm);
+            const emit = tail.slice(0, tail.length - pm);
             if (emit) yield { type: 'answer', text: emit };
           } else {
             yield { type: 'answer', text: tail };
@@ -158,10 +163,10 @@ async function* streamK2Verification(prompt) {
         const closeIdx = out.indexOf(CLOSE_TAG, i);
         if (closeIdx === -1) {
           const tail = out.slice(i);
-          const partialMatch = longestPrefixSuffix(tail, CLOSE_TAG);
-          if (partialMatch > 0) {
-            holdover = tail.slice(tail.length - partialMatch);
-            const emit = tail.slice(0, tail.length - partialMatch);
+          const pm = longestPrefixSuffix(tail, CLOSE_TAG);
+          if (pm > 0) {
+            holdover = tail.slice(tail.length - pm);
+            const emit = tail.slice(0, tail.length - pm);
             if (emit) yield { type: 'thinking', text: emit };
           } else {
             yield { type: 'thinking', text: tail };
@@ -177,24 +182,17 @@ async function* streamK2Verification(prompt) {
     }
   }
 
-  // Flush any remaining holdover
   if (holdover) { yield { type: 'answer', text: holdover }; rawBuffer += holdover; }
 
-  // Extract JSON from everything after the last </think>
-  const CLOSE_TAG = '</think>';
-  const closePos  = rawBuffer.lastIndexOf(CLOSE_TAG);
-  answerBuffer    = closePos !== -1 ? rawBuffer.slice(closePos + CLOSE_TAG.length) : rawBuffer;
+  // Extract JSON from after the last </think>
+  const closePos   = rawBuffer.lastIndexOf(CLOSE_TAG);
+  const answerBuf  = closePos !== -1 ? rawBuffer.slice(closePos + CLOSE_TAG.length) : rawBuffer;
 
-  // Parse the JSON result from the answer
   let result;
   try {
-    const stripped = answerBuffer
-      .replace(/```(?:json)?/gi, '')
-      .replace(/```/g, '')
-      .trim();
+    const stripped = answerBuf.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
     const start = stripped.indexOf('{');
     if (start === -1) throw new Error('No JSON object in response');
-    // Walk forward to find the closing brace of the outermost object
     let depth = 0, end = -1;
     for (let i = start; i < stripped.length; i++) {
       if (stripped[i] === '{') depth++;
@@ -206,18 +204,16 @@ async function* streamK2Verification(prompt) {
   } catch (e) {
     result = {
       solvable: false,
-      proof: `K2 response could not be parsed: ${e.message}. Raw: ${answerBuffer.slice(0, 300)}`,
+      proof: `K2 response could not be parsed: ${e.message}. Raw: ${answerBuf.slice(0, 300)}`,
+      kid_summary: 'Hmm, I got confused — try again!',
       bottlenecks: [],
+      solutionPath: null,
     };
   }
 
   yield { type: 'done', result };
 }
 
-/**
- * Returns the length of the longest prefix of `pattern` that is a suffix of `text`.
- * Used to detect partial tag matches at chunk boundaries.
- */
 function longestPrefixSuffix(text, pattern) {
   for (let len = Math.min(text.length, pattern.length - 1); len > 0; len--) {
     if (text.endsWith(pattern.slice(0, len))) return len;
@@ -225,12 +221,11 @@ function longestPrefixSuffix(text, pattern) {
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+
 /**
- * Public API: verify whether a level grid is solvable using K2 Think V2 (MBZUAI).
- *
- * @param {Array<Array<number|string>>} grid
- * @param {{ gravity, jumpStrength, moveSpeed, tileSize }} physicsParams
- * @returns {AsyncGenerator}  yields { type, text?, result? }
+ * Public API: verify whether a level grid is solvable using K2 Think V2.
+ * @returns {AsyncGenerator} yields { type, text?, result? }
  */
 async function* verifyLevelSolvability(grid, physicsParams) {
   const params = {
@@ -239,7 +234,20 @@ async function* verifyLevelSolvability(grid, physicsParams) {
     moveSpeed:    physicsParams.moveSpeed    ?? 280,
     tileSize:     physicsParams.tileSize     ?? 32,
   };
-  yield* streamK2Verification(buildPrompt(grid, params));
+
+  const prompt = buildPrompt(grid, params);
+  if (!prompt) {
+    yield { type: 'done', result: {
+      solvable: false,
+      proof: 'Player spawn (P) or goal (G) is missing from the level.',
+      kid_summary: 'You need both a start spot and a goal to play!',
+      bottlenecks: [],
+      solutionPath: null,
+    }};
+    return;
+  }
+
+  yield* streamK2Verification(prompt);
 }
 
 module.exports = { verifyLevelSolvability };
