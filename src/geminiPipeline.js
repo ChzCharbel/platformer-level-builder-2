@@ -2,7 +2,7 @@ require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const sharp = require('sharp');
 
-const MODEL = 'gemini-2.0-flash-lite';
+const MODEL = 'gemini-3-flash-preview';
 const COLS = 50;
 const ROWS = 35;
 const MAX_RETRIES = 3;
@@ -190,10 +190,7 @@ async function processLevelWithGemini(imageBuffer, apiKey) {
     systemInstruction: SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0,
-      maxOutputTokens: 65536,
-      thinkingConfig: {
-        thinkingLevel: 'HIGH',
-      },
+      maxOutputTokens: 8192,
     },
   });
 
