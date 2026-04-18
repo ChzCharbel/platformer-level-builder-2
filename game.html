@@ -14,10 +14,10 @@
       color: #c9d1d9;
     }
 
-    /* ── Three-column grid ── */
+    /* ── Four-column grid ── */
     #app {
       display: grid;
-      grid-template-columns: 270px 1fr 340px;
+      grid-template-columns: 260px 220px 1fr 340px;
       height: 100vh;
       overflow: hidden;
     }
@@ -120,7 +120,7 @@
     #take-photo-btn .cam-icon { font-size: 22px; }
     #upload-zone:hover #take-photo-btn { display: flex; }
 
-    /* Webcam viewfinder — sits on top of the game canvas */
+    /* Webcam viewfinder */
     #webcam-view {
       display: none;
       position: absolute;
@@ -133,7 +133,7 @@
     }
     #webcam-view.active { display: block; }
 
-    /* SNAP button overlaying the viewfinder */
+    /* SNAP button */
     #snap-btn {
       display: none;
       position: absolute;
@@ -158,7 +158,28 @@
     #snap-btn:active { transform: translateX(-50%) scale(0.97); }
     #snap-btn.active { display: block; }
 
-    /* ── Sliders ── */
+    /* ── CREATE button ── */
+    #createBtn {
+      margin-top: auto;
+      padding: 13px;
+      background: #7aa2f7;
+      color: #0e0e14;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #createBtn:hover   { background: #9ab8ff; }
+    #createBtn:active  { transform: scale(0.98); }
+    #createBtn:disabled { background: #252540; color: #444; cursor: default; }
+
+    /* ── Physics sidebar sliders ── */
     .sliders-wrap {
       display: flex;
       flex-direction: column;
@@ -195,37 +216,37 @@
       -webkit-appearance: none;
       width: 13px; height: 13px;
       border-radius: 50%;
-      background: #7aa2f7;
+      background: #f7a27a;
       cursor: pointer;
     }
     input[type=range]::-moz-range-thumb {
       width: 13px; height: 13px;
       border-radius: 50%;
-      background: #7aa2f7;
+      background: #f7a27a;
       border: none;
       cursor: pointer;
     }
 
-    /* ── CREATE button ── */
-    #createBtn {
+    /* UPDATE button */
+    #updatePhysicsBtn {
       margin-top: auto;
       padding: 13px;
-      background: #7aa2f7;
-      color: #0e0e14;
+      background: #1f1a0c;
+      color: #f7a27a;
       font-family: 'Courier New', monospace;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: bold;
       letter-spacing: 0.14em;
-      border: none;
+      border: 1px solid #6b3a1a;
       border-radius: 8px;
       cursor: pointer;
       text-transform: uppercase;
       transition: background 0.15s, transform 0.1s;
       flex-shrink: 0;
     }
-    #createBtn:hover   { background: #9ab8ff; }
-    #createBtn:active  { transform: scale(0.98); }
-    #createBtn:disabled { background: #252540; color: #444; cursor: default; }
+    #updatePhysicsBtn:hover:not(:disabled) { background: #2e2008; }
+    #updatePhysicsBtn:active { transform: scale(0.98); }
+    #updatePhysicsBtn:disabled { opacity: 0.35; cursor: default; }
 
     /* ── Center column ── */
     #center-col {
@@ -242,8 +263,7 @@
     #canvas-wrapper {
       position: relative;
       width: 100%;
-      /* maintain 960:700 aspect ratio, never overflow the column height */
-      aspect-ratio: 960 / 700;
+      aspect-ratio: 1020 / 720;
       max-height: calc(100vh - 70px);
     }
 
@@ -460,6 +480,22 @@
     .tip-problem    { font-size: 11px; font-weight: bold; color: #e2e8f0; margin-bottom: 5px; }
     .tip-suggestion { font-size: 10px; color: #9ca3af; line-height: 1.55; }
 
+    /* Cell hover tooltip */
+    #cell-tooltip {
+      position: fixed;
+      display: none;
+      z-index: 201;
+      background: #0e1020;
+      border: 1px solid #3a3a5a;
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 10px;
+      color: #c9d1d9;
+      pointer-events: none;
+      font-family: 'Courier New', monospace;
+      line-height: 1.6;
+    }
+
     /* EVALUATE button */
     #evaluateBtn {
       padding: 13px;
@@ -486,10 +522,11 @@
   <div class="tip-problem" id="tip-problem"></div>
   <div class="tip-suggestion" id="tip-suggestion"></div>
 </div>
+<div id="cell-tooltip"></div>
 
 <div id="app">
 
-  <!-- ══ LEFT SIDEBAR ══ -->
+  <!-- ══ LEFT SIDEBAR — Upload ══ -->
   <div class="sidebar">
     <div class="sidebar-title">Build Your Level</div>
 
@@ -503,6 +540,13 @@
       <button id="take-photo-btn"><span class="cam-icon">📸</span>TAKE PHOTO</button>
     </div>
     <input type="file" id="imageInput" accept="image/*">
+
+    <button id="createBtn">▶ CREATE</button>
+  </div>
+
+  <!-- ══ PHYSICS SIDEBAR ══ -->
+  <div class="sidebar">
+    <div class="sidebar-title">Physics Tuner</div>
 
     <div class="sliders-wrap">
       <div class="slider-row">
@@ -542,13 +586,13 @@
       </div>
     </div>
 
-    <button id="createBtn">▶ CREATE</button>
+    <button id="updatePhysicsBtn" disabled>⚙ UPDATE ANALYSIS</button>
   </div>
 
   <!-- ══ CENTER ══ -->
   <div id="center-col">
     <div id="canvas-wrapper">
-      <canvas id="gameCanvas" width="960" height="700"></canvas>
+      <canvas id="gameCanvas" width="1020" height="720"></canvas>
       <video id="webcam-view" autoplay playsinline muted></video>
       <button id="snap-btn">📷 SNAP</button>
       <canvas id="capture-canvas" style="display:none" width="960" height="700"></canvas>
@@ -611,7 +655,11 @@
   let MOVE_SPEED    =  280;
   let FRICTION      = 0.75;
   let MAX_FALL      = 1400;
-  const TILE_SIZE   =   32;
+  const TILE_SIZE   =   20;
+
+  // Fixed margins for row/col coordinate labels
+  const LABEL_LEFT = 24;
+  const LABEL_TOP  = 20;
 
   // ================================================================
   // INPUT
@@ -700,7 +748,6 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Dots at each waypoint
         ctx.fillStyle = 'rgba(74,222,128,0.9)';
         for (const p of solutionPath) {
           ctx.beginPath();
@@ -748,8 +795,6 @@
     }
 
     update(dt, level) {
-      // Normalize diagonal speed: moving sideways while airborne uses MOVE_SPEED/√2
-      // so the combined velocity magnitude stays consistent.
       const hSpeed = this.onGround ? MOVE_SPEED : MOVE_SPEED / Math.SQRT2;
       if (Input.left())  this.vx = -hSpeed;
       if (Input.right()) this.vx =  hSpeed;
@@ -813,8 +858,8 @@
   let state             = 'playing';
   let spawnX            = 0;
   let spawnY            = 0;
-  let offsetX           = 0;
-  let offsetY           = 0;
+  let offsetX           = LABEL_LEFT;
+  let offsetY           = LABEL_TOP;
   let currentGrid       = null;
   let activeBottlenecks      = [];
   let activeSolutionPath     = [];
@@ -839,11 +884,7 @@
   }
 
   function loadGeneratedLevel(jsonGrid) {
-    const W = canvas.width, H = canvas.height;
-    const cols = jsonGrid[0]?.length ?? 1;
-    const rows = jsonGrid.length;
-    const ts = Math.floor(Math.min((W - 16) / cols, (H - 16) / rows));
-
+    const ts   = TILE_SIZE;
     currentGrid = jsonGrid;
     activeBottlenecks       = [];
     activeSolutionPath      = [];
@@ -852,8 +893,8 @@
     activeSuggestedGoal     = null;
     level   = new Level(jsonGrid, ts);
     state   = 'playing';
-    offsetX = Math.floor((W - level.width)  / 2);
-    offsetY = Math.floor((H - level.height) / 2);
+    offsetX = LABEL_LEFT;
+    offsetY = LABEL_TOP;
 
     const spawn = level.findTile('P');
     spawnX = spawn ? spawn.col * ts : ts;
@@ -861,6 +902,7 @@
 
     spawnPlayer();
     document.getElementById('evaluateBtn').disabled = false;
+    document.getElementById('updatePhysicsBtn').disabled = false;
     const _tb = document.getElementById('tipsBtn');
     _tb.disabled    = true;
     _tb.textContent = '💡 SHOW DESIGN TIPS';
@@ -876,7 +918,6 @@
     if (!showDesignTips || !level) return;
     const ts = level.tileSize;
 
-    // Ghost spawn outline
     if (activeSuggestedSpawn) {
       const gx = offsetX + activeSuggestedSpawn.col * ts;
       const gy = offsetY + activeSuggestedSpawn.row * ts;
@@ -889,14 +930,13 @@
       ctx.fillRect(gx + ts * 0.125, gy + ts * 0.05, ts * 0.75, ts * 0.9);
       ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(74,222,128,0.5)';
-      ctx.font = `${Math.round(ts * 0.45)}px monospace`;
+      ctx.font = `bold ${Math.max(7, Math.round(ts * 0.38))}px monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('P?', gx + ts / 2, gy + ts / 2);
       ctx.restore();
     }
 
-    // Ghost goal outline
     if (activeSuggestedGoal) {
       const gx = offsetX + activeSuggestedGoal.col * ts;
       const gy = offsetY + activeSuggestedGoal.row * ts;
@@ -916,7 +956,6 @@
       ctx.restore();
     }
 
-    // '?' markers
     for (const s of suggestionsArray) {
       const cx = offsetX + s.x * ts + ts / 2;
       const cy = offsetY + s.y * ts + ts / 2;
@@ -925,11 +964,11 @@
       ctx.shadowBlur  = 14;
       ctx.fillStyle   = 'rgba(122,162,247,0.9)';
       ctx.beginPath();
-      ctx.arc(cx, cy, Math.max(8, ts * 0.32), 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.max(6, ts * 0.28), 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.fillStyle  = '#0e0e14';
-      ctx.font       = `bold ${Math.max(9, Math.round(ts * 0.38))}px monospace`;
+      ctx.font       = `bold ${Math.max(8, Math.round(ts * 0.34))}px monospace`;
       ctx.textAlign  = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('?', cx, cy);
@@ -937,48 +976,79 @@
     }
   }
 
-  // Tooltip hover on canvas
-  const _tooltip = document.getElementById('design-tooltip');
+  // ================================================================
+  // CANVAS HOVER TOOLTIP (cell coordinates + tile type)
+  // ================================================================
+  const _cellTooltip = document.getElementById('cell-tooltip');
+  const _designTooltip = document.getElementById('design-tooltip');
+
+  const TILE_NAMES = { 0: 'empty', 1: 'platform', S: 'spike', G: 'goal', P: 'spawn' };
+
   canvas.addEventListener('mousemove', e => {
-    if (!showDesignTips || !level || activeDesignSuggestions.length === 0) {
-      _tooltip.style.display = 'none';
-      return;
-    }
     const rect   = canvas.getBoundingClientRect();
     const scaleX = canvas.width  / rect.width;
     const scaleY = canvas.height / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top)  * scaleY;
-    const ts = level.tileSize;
-    const r  = Math.max(8, ts * 0.32);
 
-    for (const s of activeDesignSuggestions) {
-      const cx = offsetX + s.x * ts + ts / 2;
-      const cy = offsetY + s.y * ts + ts / 2;
-      if (Math.hypot(mx - cx, my - cy) <= r + 4) {
-        document.getElementById('tip-problem').textContent    = s.problem;
-        document.getElementById('tip-suggestion').textContent = s.suggestion;
-        _tooltip.style.display = 'block';
-        const tw = _tooltip.offsetWidth, th = _tooltip.offsetHeight;
-        let left = e.clientX + 16, top = e.clientY - 12;
-        if (left + tw > window.innerWidth  - 8) left = e.clientX - tw - 16;
-        if (top  + th > window.innerHeight - 8) top  = window.innerHeight - th - 8;
-        _tooltip.style.left = left + 'px';
-        _tooltip.style.top  = top  + 'px';
-        return;
+    // Design tip '?' hover check (takes priority)
+    if (showDesignTips && level && activeDesignSuggestions.length > 0) {
+      const ts = level.tileSize;
+      const r  = Math.max(6, ts * 0.28);
+      for (const s of activeDesignSuggestions) {
+        const cx = offsetX + s.x * ts + ts / 2;
+        const cy = offsetY + s.y * ts + ts / 2;
+        if (Math.hypot(mx - cx, my - cy) <= r + 4) {
+          document.getElementById('tip-problem').textContent    = s.problem;
+          document.getElementById('tip-suggestion').textContent = s.suggestion;
+          _designTooltip.style.display = 'block';
+          positionTooltip(_designTooltip, e.clientX, e.clientY);
+          _cellTooltip.style.display = 'none';
+          return;
+        }
       }
+      _designTooltip.style.display = 'none';
+    } else {
+      _designTooltip.style.display = 'none';
     }
-    _tooltip.style.display = 'none';
-  });
-  canvas.addEventListener('mouseleave', () => { _tooltip.style.display = 'none'; });
 
-  // Toggle button
+    // Cell coordinate tooltip
+    if (!level) { _cellTooltip.style.display = 'none'; return; }
+    const ts  = level.tileSize;
+    const col = Math.floor((mx - offsetX) / ts);
+    const row = Math.floor((my - offsetY) / ts);
+    if (col < 0 || col >= level.cols || row < 0 || row >= level.rows) {
+      _cellTooltip.style.display = 'none';
+      return;
+    }
+    const tile = level.getTile(row, col);
+    const name = TILE_NAMES[tile] ?? String(tile);
+    _cellTooltip.textContent = `col ${col}, row ${row}  [${name}]`;
+    _cellTooltip.style.display = 'block';
+    positionTooltip(_cellTooltip, e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    _cellTooltip.style.display   = 'none';
+    _designTooltip.style.display = 'none';
+  });
+
+  function positionTooltip(el, cx, cy) {
+    const tw = el.offsetWidth, th = el.offsetHeight;
+    let left = cx + 14, top = cy - 10;
+    if (left + tw > window.innerWidth  - 8) left = cx - tw - 14;
+    if (top  + th > window.innerHeight - 8) top  = window.innerHeight - th - 8;
+    el.style.left = left + 'px';
+    el.style.top  = top  + 'px';
+  }
+
+  // Tips toggle button
   document.getElementById('tipsBtn').addEventListener('click', () => {
     showDesignTips = !showDesignTips;
     const btn = document.getElementById('tipsBtn');
     btn.textContent = showDesignTips ? '💡 HIDE DESIGN TIPS' : '💡 SHOW DESIGN TIPS';
     btn.classList.toggle('off', !showDesignTips);
-    if (!showDesignTips) _tooltip.style.display = 'none';
+    if (!showDesignTips) _designTooltip.style.display = 'none';
   });
 
   // ================================================================
@@ -1011,6 +1081,8 @@
   function drawGrid() {
     if (!level) return;
     const ts = level.tileSize;
+
+    // Grid lines
     ctx.strokeStyle = 'rgba(0,0,0,0.07)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -1025,12 +1097,35 @@
       ctx.lineTo(offsetX + level.width, y);
     }
     ctx.stroke();
+
+    // Column numbers (every 5th)
+    ctx.fillStyle = '#555577';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let c = 0; c <= level.cols; c += 5) {
+      const x = offsetX + c * ts;
+      ctx.fillText(String(c), x, LABEL_TOP / 2);
+    }
+
+    // Row numbers (every 5th)
+    ctx.textAlign = 'right';
+    for (let r = 0; r <= level.rows; r += 5) {
+      const y = offsetY + r * ts;
+      ctx.fillText(String(r), LABEL_LEFT - 3, y);
+    }
   }
 
   function draw() {
     const W = canvas.width, H = canvas.height;
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, W, H);
+
+    // Label margin backgrounds
+    ctx.fillStyle = '#f8f8fc';
+    ctx.fillRect(0, 0, LABEL_LEFT, H);
+    ctx.fillRect(0, 0, W, LABEL_TOP);
+
     drawGrid();
 
     if (!level) {
@@ -1080,7 +1175,7 @@
   }
 
   // ================================================================
-  // SLIDER DISPLAY (live label only — physics unchanged until CREATE)
+  // SLIDER DISPLAY
   // ================================================================
   const sliderMap = [
     { id: 'sl-gravity',  valId: 'val-gravity',  decimals: 0 },
@@ -1103,7 +1198,7 @@
   const imageInput = document.getElementById('imageInput');
 
   uploadZone.addEventListener('click', e => {
-    if (e.target.closest('#take-photo-btn')) return; // handled below
+    if (e.target.closest('#take-photo-btn')) return;
     imageInput.click();
   });
 
@@ -1199,7 +1294,6 @@
       if (!blob) return;
       stopWebcam();
 
-      // Show snapshot preview in upload zone
       if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
       previewObjectUrl = URL.createObjectURL(blob);
       const preview = document.getElementById('zone-preview');
@@ -1211,13 +1305,7 @@
       label.style.display   = 'block';
       def.style.display     = 'none';
 
-      // Sync physics and upload
-      GRAVITY       = parseFloat(document.getElementById('sl-gravity').value);
-      JUMP_STRENGTH = parseFloat(document.getElementById('sl-jump').value);
-      MOVE_SPEED    = parseFloat(document.getElementById('sl-speed').value);
-      FRICTION      = parseFloat(document.getElementById('sl-friction').value);
-      MAX_FALL      = parseFloat(document.getElementById('sl-maxfall').value);
-
+      syncPhysics();
       setLoading(true);
       const form = new FormData();
       form.append('image', blob, 'webcam-snap.jpg');
@@ -1237,24 +1325,25 @@
   }
 
   // ================================================================
-  // CREATE BUTTON — sync physics + upload image
+  // CREATE BUTTON
   // ================================================================
-  document.getElementById('createBtn').addEventListener('click', async () => {
-    // Sync physics constants from sliders
+  function syncPhysics() {
     GRAVITY       = parseFloat(document.getElementById('sl-gravity').value);
     JUMP_STRENGTH = parseFloat(document.getElementById('sl-jump').value);
     MOVE_SPEED    = parseFloat(document.getElementById('sl-speed').value);
     FRICTION      = parseFloat(document.getElementById('sl-friction').value);
     MAX_FALL      = parseFloat(document.getElementById('sl-maxfall').value);
+  }
 
-    // If no new file, just re-apply physics to current level
+  document.getElementById('createBtn').addEventListener('click', async () => {
+    syncPhysics();
+
     if (!pendingFile) {
       if (level) { spawnPlayer(); resetSidebar(); }
       return;
     }
 
     setLoading(true);
-
     const form = new FormData();
     form.append('image', pendingFile);
 
@@ -1273,7 +1362,7 @@
   });
 
   // ================================================================
-  // TERM REPLACEMENT — swap jargon for kid-friendly words
+  // TERM REPLACEMENT
   // ================================================================
   const TERM_MAP = [
     [/\bAABB\s*[Cc]ollision\b/g,      'Touch Detection'],
@@ -1328,12 +1417,11 @@
     activeSuggestedSpawn    = null;
     activeSuggestedGoal     = null;
     showDesignTips          = false;
-    _tooltip.style.display  = 'none';
+    _designTooltip.style.display  = 'none';
     _traceThink  = '';
     _traceAnswer = '';
   }
 
-  // Live-stream trace with RAF batching + term replacement
   let _traceThink      = '';
   let _traceAnswer     = '';
   let _traceRafPending = false;
@@ -1379,7 +1467,6 @@
     document.getElementById('robot-thinking').classList.remove('active');
     document.getElementById('trace-cursor').style.display = 'none';
 
-    // Challenge alert for impossible levels
     if (!result.solvable) {
       document.getElementById('kid-summary').textContent = result.kid_summary || 'This level is too hard to beat with these settings!';
       challengeAlert.classList.add('visible');
@@ -1425,13 +1512,15 @@
     }
   }
 
-  document.getElementById('evaluateBtn').addEventListener('click', async () => {
+  async function runEvaluation() {
     if (!currentGrid) return;
 
     const btn       = document.getElementById('evaluateBtn');
+    const updateBtn = document.getElementById('updatePhysicsBtn');
     const indicator = document.getElementById('thinking-indicator');
 
-    btn.disabled = true;
+    btn.disabled       = true;
+    updateBtn.disabled = true;
     indicator.style.display = 'inline-block';
     document.getElementById('verdict').style.display = 'none';
     document.getElementById('bottlenecks-section').style.display = 'none';
@@ -1495,11 +1584,20 @@
     } catch (err) {
       appendToTrace(`\n[ERROR] ${err.message}`, 'answer-chunk');
     } finally {
-      btn.disabled = false;
+      btn.disabled       = false;
+      updateBtn.disabled = false;
       indicator.style.display = 'none';
       document.getElementById('robot-thinking').classList.remove('active');
       document.getElementById('trace-cursor').style.display = 'none';
     }
+  }
+
+  document.getElementById('evaluateBtn').addEventListener('click', runEvaluation);
+
+  document.getElementById('updatePhysicsBtn').addEventListener('click', () => {
+    syncPhysics();
+    if (level) spawnPlayer();
+    runEvaluation();
   });
 
   // ================================================================

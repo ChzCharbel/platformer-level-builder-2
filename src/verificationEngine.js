@@ -9,7 +9,7 @@ const K2_MODEL    = process.env.K2_MODEL        || 'MBZUAI-IFM/K2-Think-v2';
 /**
  * Convert grid to a compact level description for K2.
  */
-function buildPrompt(grid, physicsParams) {
+function buildPrompt(grid, physicsParams, deathPositions = []) {
   const { gravity, jumpStrength, moveSpeed, tileSize } = physicsParams;
 
   const surfaces = [], spikes = [];
@@ -59,34 +59,39 @@ function buildPrompt(grid, physicsParams) {
   // Can the player jump FROM platform A and LAND ON platform B?
   // "Up" in screen space = lower row number. Rise = (fromRow - toRow) tiles.
   function canJump(from, to) {
-    const riseTiles = from.row - to.row; // positive = jumping up, negative = jumping down
-    const colOptions = [];
-    // Try every edge-to-edge horizontal distance
-    for (const fc of [from.minCol, from.maxCol]) {
-      for (const tc of [to.minCol, to.maxCol]) {
-        colOptions.push(Math.abs(tc - fc));
-      }
-    }
-    const minHorizTiles = Math.min(...colOptions);
+    const riseTiles = from.row - to.row; // positive = up (lower row number), negative = down
 
-    if (riseTiles < 0) {
-      // Jumping DOWN: always reachable horizontally if platforms overlap or are within reach
+    // Minimum edge-to-edge horizontal gap between the two platforms
+    const minHorizTiles = Math.min(
+      Math.abs(from.minCol - to.minCol),
+      Math.abs(from.minCol - to.maxCol),
+      Math.abs(from.maxCol - to.minCol),
+      Math.abs(from.maxCol - to.maxCol),
+    );
+
+    if (riseTiles <= 0) {
+      // Jumping DOWN or same height: reachable if horizontal gap is within full air time
       return minHorizTiles <= maxHorizReachTiles;
     }
-    // Jumping UP: need enough height AND horizontal reach
+
+    // Jumping UP: first check if the platform is within max jump height
     if (riseTiles > maxJumpHeightTiles) return false;
-    // Time to reach that height (ascending phase): riseTiles*tileSize = jumpStrength*t - 0.5*gravity*t²
-    // Approximate: if height is reachable, check horizontal reach at that time
+
+    // Solve for the time the player is at height risePx on the way DOWN (descent).
+    // Equation: risePx = jumpStrength*t - 0.5*gravity*t²
+    // Two solutions: t1 (ascent) and t2 (descent). Use t2 for maximum horizontal reach.
     const risePx = riseTiles * tileSize;
-    // discriminant of quadratic for t: 0.5g t² - v0 t + h = 0
     const disc = jumpStrength * jumpStrength - 2 * gravity * risePx;
     if (disc < 0) return false;
-    const tAscend = (jumpStrength - Math.sqrt(disc)) / gravity; // time to reach that height (ascending)
-    const horizAtThat = hAirSpeed * tAscend;
-    return minHorizTiles * tileSize <= horizAtThat + (from.maxCol - from.minCol) * tileSize;
+    const tDescent = (jumpStrength + Math.sqrt(disc)) / gravity;
+    const horizReach = hAirSpeed * tDescent;
+
+    return minHorizTiles * tileSize <= horizReach;
   }
 
   const reachabilityLines = [];
+  // Build adjacency for BFS
+  const adj = Array.from({ length: platforms.length }, () => []);
   for (let i = 0; i < platforms.length; i++) {
     for (let j = 0; j < platforms.length; j++) {
       if (i === j) continue;
@@ -94,54 +99,112 @@ function buildPrompt(grid, physicsParams) {
       const riseTiles = platforms[i].row - platforms[j].row;
       const dir = riseTiles > 0 ? `UP ${riseTiles} tiles` : riseTiles < 0 ? `DOWN ${-riseTiles} tiles` : 'SAME HEIGHT';
       reachabilityLines.push(`  P${i} → P${j}: ${ok ? 'REACHABLE' : 'TOO FAR'} (${dir})`);
+      if (ok) adj[i].push(j);
     }
   }
 
-  // Find which platform each special position belongs to
-  function findPlatform(pos) {
-    return platforms.find(p => p.row === pos.row && p.minCol <= pos.col && pos.col <= p.maxCol)
-      ?? platforms.reduce((best, p) => {
-        const d = Math.abs(p.row - pos.row);
-        return d < Math.abs(best.row - pos.row) ? p : best;
-      }, platforms[0]);
+  // Helper: raw tile lookup
+  function tileAt(r, c) {
+    if (r < 0 || r >= grid.length || c < 0 || c >= (grid[0]?.length ?? 0)) return 0;
+    return grid[r][c];
   }
+
+  // Check if pos has a solid tile directly below (player lands there on spawn)
+  function isGrounded(pos) {
+    const below = tileAt(pos.row + 1, pos.col);
+    return below === 1 || below === 'T';
+  }
+
+  // Find the platform the player actually stands on from this position:
+  // 1. Exact row match (pos IS on the surface row)
+  // 2. First solid tile below pos (player falls and lands)
+  // 3. Nearest platform by row as fallback
+  function findPlatform(pos) {
+    const exact = platforms.find(p => p.row === pos.row && p.minCol <= pos.col && pos.col <= p.maxCol);
+    if (exact) return exact;
+    for (let r = pos.row + 1; r < grid.length; r++) {
+      const cell = tileAt(r, pos.col);
+      if (cell === 1 || cell === 'T') {
+        const plat = platforms.find(p => p.row === r && p.minCol <= pos.col && pos.col <= p.maxCol);
+        if (plat) return plat;
+      }
+    }
+    return platforms.length
+      ? platforms.reduce((best, p) => Math.abs(p.row - pos.row) < Math.abs(best.row - pos.row) ? p : best, platforms[0])
+      : null;
+  }
+
+  const startGrounded = isGrounded(playerPos);
+  const goalGrounded  = isGrounded(goalPos);
   const startPlat = platforms.length ? findPlatform({ row: playerPos.row, col: playerPos.col }) : null;
   const goalPlat  = platforms.length ? findPlatform({ row: goalPos.row,   col: goalPos.col   }) : null;
 
+  // BFS to definitively determine solvability
+  let bfsSolvable = false;
+  let bfsPath = null;
+  if (startPlat && goalPlat) {
+    if (startPlat.id === goalPlat.id) {
+      bfsSolvable = true;
+      bfsPath = [startPlat.id];
+    } else {
+      const visited = new Set([startPlat.id]);
+      const queue = [[startPlat.id]];
+      while (queue.length > 0) {
+        const path = queue.shift();
+        const cur = path[path.length - 1];
+        for (const next of adj[cur]) {
+          if (next === goalPlat.id) { bfsSolvable = true; bfsPath = [...path, next]; break; }
+          if (!visited.has(next)) { visited.add(next); queue.push([...path, next]); }
+        }
+        if (bfsSolvable) break;
+      }
+    }
+  }
+
+  const bfsVerdict = bfsSolvable
+    ? `SOLVABLE — BFS found a path: ${bfsPath.map(i => `P${i}`).join(' → ')}`
+    : `UNSOLVABLE — BFS found no path from P${startPlat?.id} to P${goalPlat?.id}`;
+
   const platformList = platforms
-    .map(p => `  P${p.id}: row ${p.row}, cols ${p.minCol}–${p.maxCol}  [${p.row === playerPos.row ? 'START PLATFORM' : ''}${p.row === goalPos.row ? 'GOAL PLATFORM' : ''}]`)
+    .map(p => `  P${p.id}: row ${p.row}, cols ${p.minCol}–${p.maxCol}  [${p.id === startPlat?.id ? 'START PLATFORM' : ''}${p.id === goalPlat?.id ? 'GOAL PLATFORM' : ''}]`)
     .join('\n');
 
-  return `You are checking whether a player character can reach the FINISH from the START in a 2-D platformer game. Write in simple, fun words a 10-year-old would enjoy.
+  return `You are describing a 2-D platformer level to a child. Write in simple, fun words a 10-year-old would enjoy.
 
-COORDINATE SYSTEM (critical — read carefully):
-  - Column 0 is the LEFT edge. Column numbers increase going RIGHT.
-  - Row 0 is the TOP edge. Row numbers increase going DOWN.
-  - So a platform at row 10 is ABOVE a platform at row 20 on screen.
-  - "Jumping UP" means moving to a LOWER row number.
+⚠ SOLVABILITY HAS BEEN COMPUTED BY A PROGRAM — YOU MUST ACCEPT IT:
+  ${bfsVerdict}
+  Set "solvable": ${bfsSolvable}. Do NOT override this.
 
-PHYSICS (pre-calculated — trust these numbers, do not recompute):
-  - Max jump height: ${maxJumpHeightTiles.toFixed(2)} tiles (${maxJumpHeightPx.toFixed(0)} px)
-  - Max horizontal reach during one full jump: ${maxHorizReachTiles.toFixed(2)} tiles
-  - A jump DOWN to a lower platform is almost always possible if horizontal distance ≤ ${maxHorizReachTiles.toFixed(2)} tiles.
-  - A jump UP is possible only if height difference ≤ ${maxJumpHeightTiles.toFixed(2)} tiles AND horizontal distance is reachable.
+RULES FOR DESIGN SUGGESTIONS (read carefully):
+  - Spikes do NOT make a level unsolvable. Players can jump over them. Do NOT flag spikes as blocking.
+  - A "lonely platform" is fine as long as it is REACHABLE per the table above. Do NOT flag reachable platforms as problems.
+  - START is ${startGrounded ? 'GROUNDED (solid tile directly below — do NOT flag as floating)' : 'FLOATING (no solid tile below — this IS a real problem)'}.
+  - FINISH is ${goalGrounded  ? 'GROUNDED (solid tile directly below — do NOT flag as floating)' : 'FLOATING (no solid tile below — this IS a real problem)'}.
+  - Only flag a gap as a problem if the REACHABILITY TABLE shows it as TOO FAR.
 
-PLATFORMS (row = where player's feet stand; lower row number = higher on screen):
+COORDINATE SYSTEM:
+  - Column 0 is LEFT. Row 0 is TOP. Row numbers increase downward.
+
+PHYSICS:
+  - Max jump height: ${maxJumpHeightTiles.toFixed(2)} tiles
+  - Max horizontal reach per jump: ${maxHorizReachTiles.toFixed(2)} tiles
+
+PLATFORMS:
 ${platformList}
 
-REACHABILITY TABLE (pre-computed — use this directly, do not second-guess it):
+REACHABILITY TABLE:
 ${reachabilityLines.join('\n')}
 
 LEVEL:
-  START (player): col ${playerPos.col}, row ${playerPos.row}
-  FINISH (goal):  col ${goalPos.col}, row ${goalPos.row}
+  START (player): col ${playerPos.col}, row ${playerPos.row} — ${startGrounded ? 'grounded' : 'FLOATING'}
+  FINISH (goal):  col ${goalPos.col},  row ${goalPos.row}  — ${goalGrounded  ? 'grounded' : 'FLOATING'}
   Danger spikes:  ${spikeList}
 
 YOUR JOB:
-1. Find which platform the START is on and which the FINISH is on.
-2. Using ONLY the REACHABILITY TABLE above, find any sequence of platforms from START to FINISH where each step is marked REACHABLE.
-3. If such a path exists → solvable = true. List the platform IDs in order.
-4. If no path exists → solvable = false. Say exactly which jump is impossible.
+1. Set "solvable": ${bfsSolvable} — do not change it.
+2. Write a fun kid-friendly explanation.
+3. If solvable, fill solutionPath.
+4. Only add design_suggestions for REAL problems (unreachable gaps, truly floating start/finish).
 
 Return ONLY this JSON object — no words outside it:
 {
@@ -164,7 +227,16 @@ Return ONLY this JSON object — no words outside it:
 Notes for design_suggestions:
 - Include 1–4 tips pointing out spots that could be improved (dangerous gaps, lonely floating platforms, dead ends, a missing start or finish).
 - If the START or FINISH is missing from the level, set suggestedSpawn / suggestedGoal to a good empty cell where the kid should draw it.
-- If both are present, set suggestedSpawn and suggestedGoal to null.`;
+- If both are present, set suggestedSpawn and suggestedGoal to null.${deathPositions.length > 0 ? `
+
+AUTOPILOT DEATH LOG (${deathPositions.length} recorded):
+${deathPositions.map((d, i) => `  Death ${i + 1}: col ${d.col}, row ${d.row}`).join('\n')}
+
+The AI autopilot died at the positions above. Analyse each death spot carefully:
+  - Is there a spike cluster, a gap, or a tricky platform edge causing this?
+  - Update your bottlenecks list to include each death location with a clear kid-friendly explanation of WHY the bot gets stuck there.
+  - If the same area caused multiple deaths, flag it as extra dangerous.
+  - Use this data to improve your design_suggestions — what tile change near each death spot would fix the problem?` : ''}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -347,7 +419,7 @@ async function* mockVerification(grid) {
   }};
 }
 
-async function* verifyLevelSolvability(grid, physicsParams) {
+async function* verifyLevelSolvability(grid, physicsParams, deathPositions = []) {
   const params = {
     gravity:      physicsParams.gravity      ?? 1800,
     jumpStrength: physicsParams.jumpStrength ?? 600,
@@ -355,7 +427,7 @@ async function* verifyLevelSolvability(grid, physicsParams) {
     tileSize:     physicsParams.tileSize     ?? 32,
   };
 
-  const prompt = buildPrompt(grid, params);
+  const prompt = buildPrompt(grid, params, deathPositions);
   if (!prompt) {
     yield { type: 'done', result: {
       solvable: false,

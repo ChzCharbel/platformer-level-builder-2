@@ -9,7 +9,7 @@ const { processLevelWithGemini, COLS, ROWS } = require('./geminiPipeline');
  * @param {string} [apiKey]     Gemini key — falls back to GEMINI_API_KEY env var
  */
 async function processLevelImage(imageBuffer, apiKey) {
-  console.log('[1/2] Pre-processing image and calling Gemini 2.5 Flash Vision…');
+  console.log('[1/2] Pre-processing image and calling Gemini 2.0 Flash Vision…');
   const { grid, playerStart, goal, spikes } = await processLevelWithGemini(imageBuffer, apiKey);
 
   if (playerStart) grid[playerStart.row][playerStart.col] = 'P';

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload as UploadIcon, Camera, X, AlertCircle } from 'lucide-react'
@@ -74,6 +74,75 @@ function LegendCard({ label, hint, svg }) {
   )
 }
 
+function CameraModal({ onCapture, onClose }) {
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
+  const canvasRef = useRef(null)
+
+  useEffect(() => {
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 } },
+      audio: false,
+    }).then(stream => {
+      streamRef.current = stream
+      if (videoRef.current) videoRef.current.srcObject = stream
+    }).catch(err => {
+      alert('Could not access camera: ' + err.message)
+      onClose()
+    })
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop())
+    }
+  }, [onClose])
+
+  const snap = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0)
+    canvas.toBlob(blob => {
+      const f = new File([blob], 'camera-snap.jpg', { type: 'image/jpeg' })
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      onCapture(f)
+    }, 'image/jpeg', 0.92)
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black"
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-full object-cover"
+      />
+      <canvas ref={canvasRef} className="hidden" />
+      <div className="absolute bottom-10 flex gap-6">
+        <button
+          onClick={snap}
+          className="w-16 h-16 rounded-full bg-white border-4 border-orange-400 shadow-xl
+                     hover:scale-110 transition-transform"
+          aria-label="Take photo"
+        />
+        <button
+          onClick={onClose}
+          className="w-16 h-16 rounded-full bg-stone-800/80 flex items-center justify-center
+                     hover:bg-stone-700 transition-colors"
+          aria-label="Cancel"
+        >
+          <X size={28} className="text-white" />
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
 export default function Upload() {
   const navigate = useNavigate()
   const inputRef = useRef(null)
@@ -81,6 +150,7 @@ export default function Upload() {
   const [preview, setPreview] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
 
   const validateAndSet = useCallback((f) => {
     setError(null)
@@ -150,23 +220,27 @@ export default function Upload() {
     navigate('/play/demo')
   }
 
+  const handleCameraCapture = useCallback((f) => {
+    setCameraOpen(false)
+    validateAndSet(f)
+  }, [validateAndSet])
+
   return (
+    <>
+    <AnimatePresence>
+      {cameraOpen && (
+        <CameraModal
+          onCapture={handleCameraCapture}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
+    </AnimatePresence>
     <div className="relative min-h-dvh flex flex-col items-center justify-center px-4 py-12 overflow-hidden">
       <Aurora />
 
       {/* Hero */}
       <div className="relative z-10 text-center max-w-2xl w-full">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="inline-flex items-center gap-2 mb-6 px-4 py-1.5 rounded-full
-                     bg-orange-100 border border-orange-200 text-orange-700 text-sm font-semibold"
-        >
-          <span>✏️</span> HackPrinceton 2025
-        </motion.div>
-
-        <h1 className="text-5xl sm:text-6xl font-black text-stone-800 leading-tight mb-4 tracking-tight">
+<h1 className="text-5xl sm:text-6xl font-black text-stone-800 leading-tight mb-4 tracking-tight">
           <SplitText text="Sketch a Level." className="block" />
           <span className="block text-orange-500">
             <SplitText text="Play It." />
@@ -253,11 +327,12 @@ export default function Upload() {
                 </div>
 
                 {/* Camera option */}
-                <label
+                <div
                   role="button"
                   tabIndex={0}
                   aria-label="Take a photo with your camera"
-                  onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.click()}
+                  onClick={() => setCameraOpen(true)}
+                  onKeyDown={(e) => e.key === 'Enter' && setCameraOpen(true)}
                   className="flex flex-col items-center justify-center gap-3 p-8 rounded-3xl
                              border-2 border-dashed border-stone-300 bg-white/60
                              hover:border-sky-300 hover:bg-sky-50/60 hover:scale-[1.02]
@@ -270,14 +345,7 @@ export default function Upload() {
                     <p className="font-bold text-stone-700 text-base">Camera</p>
                     <p className="text-xs text-stone-400 mt-1">Take a photo now</p>
                   </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    onChange={onFileChange}
-                  />
-                </label>
+                </div>
               </motion.div>
             ) : (
               /* Preview */
@@ -366,5 +434,6 @@ export default function Upload() {
         </motion.div>
       </div>
     </div>
+    </>
   )
 }
