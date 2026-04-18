@@ -5,6 +5,7 @@ const path    = require('path');
 const fs      = require('fs');
 const { processLevelImage }       = require('./src/levelConverter');
 const { verifyLevelSolvability }  = require('./src/verificationEngine');
+const { generateHardMode }        = require('./src/hardModeEngine');
 
 const app    = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -60,6 +61,21 @@ app.post('/verify', async (req, res) => {
   }
 
   res.end();
+});
+
+// POST /api/levels/hard-mode — generate hard-mode remix using AI/deterministic
+app.post('/api/levels/hard-mode', async (req, res) => {
+  const { grid, width, height, playerStart, goal, deathPositions, telemetry } = req.body;
+  if (!Array.isArray(grid) || grid.length === 0) {
+    return res.status(400).json({ error: 'No grid provided.' });
+  }
+  try {
+    const result = await generateHardMode({ grid, width, height, playerStart, goal, deathPositions: deathPositions || [], telemetry: telemetry || {} });
+    res.json(result);
+  } catch (err) {
+    console.error('Hard mode error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
