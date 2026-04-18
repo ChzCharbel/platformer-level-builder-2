@@ -2,7 +2,7 @@ require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const sharp = require('sharp');
 
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-2.5-flash-lite';
 const COLS = 50;
 const ROWS = 35;
 const MAX_RETRIES = 3;
@@ -12,24 +12,38 @@ Output ONLY a valid JSON object — no explanation, no markdown, no extra text.
 
 The image shows hand-drawn grid paper with a ${COLS}-column × ${ROWS}-row cell grid (col 0 = left, row 0 = top).
 
-Instead of listing every cell, describe each filled/shaded region as a rectangle:
-- "row_start" and "row_end": first and last filled row (inclusive, 0-indexed)
-- "col_start" and "col_end": first and last filled column (inclusive, 0-indexed)
+Detect three types of markings:
+1. Filled/shaded rectangular platform regions — described as bounding boxes.
+2. A circle marker — the player spawn point (only one expected).
+3. A star marker — the level goal (only one expected).
 
 Required output:
-{ "shapes": [ { "row_start": <r>, "row_end": <r>, "col_start": <c>, "col_end": <c> }, ... ] }
+{
+  "shapes": [ { "row_start": <r>, "row_end": <r>, "col_start": <c>, "col_end": <c> }, ... ],
+  "playerStart": { "row": <r>, "col": <c> } or null,
+  "goal": { "row": <r>, "col": <c> } or null
+}
 
 Rules:
-- Include one entry per distinct filled rectangle.
-- Grid lines are NOT fills — only solid shaded/pencilled cell interiors count.
-- If no shapes are filled, return { "shapes": [] }.`;
+- "shapes" lists only solid shaded/pencilled platform rectangles. Grid lines are NOT fills.
+- "playerStart" is the single cell containing a drawn circle (O shape). Set to null if none.
+- "goal" is the single cell containing a drawn star (★ shape). Set to null if none.
+- If no shapes are filled, return { "shapes": [], "playerStart": null, "goal": null }.`;
 
-const USER_PROMPT = `Examine the image and identify every shaded or filled rectangular region on the grid.
+const USER_PROMPT = `Examine the image and identify all markings on the grid.
 
-Important: treat each visually disconnected filled region as its own separate shape. If two filled areas are separated by even one empty row or column of blank cells, they must be listed as two separate shapes — do not merge them into one bounding box.
+Step 1 — Platforms: find every shaded or filled rectangular region. Treat each visually disconnected filled region as its own separate shape (separated by even one empty row/column → two shapes). For each, record exact 0-indexed row_start, row_end, col_start, col_end within the ${COLS}×${ROWS} grid.
 
-For each region, count the exact start and end row and column (0-indexed) within the ${COLS}×${ROWS} grid.
-Return: { "shapes": [ { "row_start": ..., "row_end": ..., "col_start": ..., "col_end": ... }, ... ] }`;
+Step 2 — Player spawn: find the cell containing a circle (O) marker. Record its row and col (0-indexed). If none, set playerStart to null.
+
+Step 3 — Goal: find the cell containing a star (★) marker. Record its row and col (0-indexed). If none, set goal to null.
+
+Return:
+{
+  "shapes": [ { "row_start": ..., "row_end": ..., "col_start": ..., "col_end": ... }, ... ],
+  "playerStart": { "row": ..., "col": ... } or null,
+  "goal": { "row": ..., "col": ... } or null
+}`;
 
 async function preprocessImage(imageBuffer) {
   return sharp(imageBuffer)
@@ -83,7 +97,6 @@ async function processLevelWithGemini(imageBuffer, apiKey) {
     generationConfig: {
       temperature: 0,
       maxOutputTokens: 65536,
-      thinkingConfig: { thinkingBudget: 24576 },
     },
   });
 
@@ -105,7 +118,10 @@ async function processLevelWithGemini(imageBuffer, apiKey) {
     try {
       const obj = extractJSON(text);
       if (!Array.isArray(obj.shapes)) throw new Error('"shapes" is not an array');
-      return shapesToGrid(obj.shapes);
+      const grid = shapesToGrid(obj.shapes);
+      const playerStart = obj.playerStart || null;
+      const goal = obj.goal || null;
+      return { grid, playerStart, goal };
     } catch (e) {
       lastError = e;
     }

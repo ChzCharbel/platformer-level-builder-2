@@ -10,15 +10,18 @@ const { processLevelWithGemini, COLS, ROWS } = require('./geminiPipeline');
  */
 async function processLevelImage(imageBuffer, apiKey) {
   console.log('[1/2] Pre-processing image and calling Gemini 2.5 Flash Vision…');
-  const grid = await processLevelWithGemini(imageBuffer, apiKey);
+  const { grid, playerStart, goal } = await processLevelWithGemini(imageBuffer, apiKey);
+
+  if (playerStart) grid[playerStart.row][playerStart.col] = 'P';
+  if (goal)        grid[goal.row][goal.col]        = 'G';
 
   console.log('[2/2] Validation passed.');
   return {
     width: COLS,
     height: ROWS,
     data: grid,
-    playerStart: null,
-    goal: null,
+    playerStart,
+    goal,
   };
 }
 

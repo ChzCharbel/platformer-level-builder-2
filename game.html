@@ -5,31 +5,48 @@
   <title>Platformer</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
       background: #1a1a2e;
       display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: monospace;
+      gap: 0;
+    }
+
+    /* ── Left column: canvas + controls ── */
+    #left-col {
+      display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100vh;
-      font-family: monospace;
+      padding: 16px 12px 16px 16px;
+      flex-shrink: 0;
     }
+
     canvas {
       display: block;
       border: 2px solid #444;
       image-rendering: pixelated;
     }
+
     #hud {
       color: #aaa;
       font-size: 13px;
       margin-top: 8px;
     }
-    #uploader {
+
+    #controls {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-top: 14px;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
     }
+
     #uploadLabel {
       cursor: pointer;
       background: #fff;
@@ -41,33 +58,195 @@
     }
     #uploadLabel:hover { background: #ddd; }
     #imageInput { display: none; }
+
     #uploadStatus {
       font-family: monospace;
       font-size: 13px;
       color: #aaa;
     }
+
+    #verifyBtn {
+      cursor: pointer;
+      background: #0f3460;
+      color: #e0e0ff;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 8px 16px;
+      border: 2px solid #4a90d9;
+      transition: background 0.15s;
+    }
+    #verifyBtn:hover:not(:disabled) { background: #1a4d80; }
+    #verifyBtn:disabled { opacity: 0.5; cursor: default; }
+
+    /* ── Right column: verification sidebar ── */
+    #sidebar {
+      width: 380px;
+      min-height: 100vh;
+      background: #12122a;
+      border-left: 2px solid #2a2a4a;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 14px;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    #sidebar h2 {
+      color: #7aa2f7;
+      font-size: 15px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #2a2a4a;
+      padding-bottom: 8px;
+    }
+
+    /* Verdict banner */
+    #verdict {
+      padding: 10px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      display: none;
+    }
+    #verdict.solvable   { background: #0d2b1a; border: 1px solid #22c55e; color: #4ade80; }
+    #verdict.unsolvable { background: #2b0d0d; border: 1px solid #ef4444; color: #f87171; }
+    #verdict.error      { background: #2b1d0d; border: 1px solid #f59e0b; color: #fbbf24; }
+
+    #verdict-icon   { font-size: 20px; margin-right: 6px; }
+    #verdict-label  { font-weight: bold; font-size: 14px; }
+    #verdict-proof  { margin-top: 6px; font-size: 12px; color: #aaa; line-height: 1.5; }
+
+    /* Bottleneck list */
+    #bottlenecks-section {
+      display: none;
+    }
+    #bottlenecks-section h3 {
+      color: #f59e0b;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    #bottleneck-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #bottleneck-list li {
+      background: #1e1a00;
+      border: 1px solid #3d3000;
+      border-radius: 3px;
+      padding: 6px 8px;
+      font-size: 12px;
+      color: #fcd34d;
+    }
+    #bottleneck-list li span.coord {
+      color: #f59e0b;
+      font-weight: bold;
+      margin-right: 6px;
+    }
+
+    /* Reasoning trace */
+    #reasoning-section h3 {
+      color: #9ca3af;
+      font-size: 13px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #thinking-indicator {
+      display: none;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #7aa2f7;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+
+    #reasoning-trace {
+      background: #0a0a1a;
+      border: 1px solid #1e1e3a;
+      border-radius: 4px;
+      padding: 10px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: #6b7280;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 200px;
+      max-height: 520px;
+      word-break: break-word;
+    }
+
+    #reasoning-trace .thinking-chunk { color: #5d6a8a; }
+    #reasoning-trace .answer-chunk   { color: #9ca3af; }
+
+    #idle-hint {
+      color: #3a3a5a;
+      font-size: 12px;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="1200" height="800"></canvas>
-  <div id="hud">Arrow Keys / WASD to move &nbsp;|&nbsp; Up / W / Space to jump</div>
 
-  <div id="uploader">
-    <label id="uploadLabel" for="imageInput">📷 Upload grid image</label>
-    <input type="file" id="imageInput" accept="image/*">
-    <span id="uploadStatus"></span>
+  <!-- ── Left: game canvas ── -->
+  <div id="left-col">
+    <canvas id="gameCanvas" width="960" height="700"></canvas>
+    <div id="hud">Arrow Keys / WASD to move &nbsp;|&nbsp; Up / W / Space to jump &nbsp;|&nbsp; R to reset</div>
+    <div id="controls">
+      <label id="uploadLabel" for="imageInput">📷 Upload grid image</label>
+      <input type="file" id="imageInput" accept="image/*">
+      <span id="uploadStatus"></span>
+      <button id="verifyBtn" disabled>🔬 Verify Level</button>
+    </div>
+  </div>
+
+  <!-- ── Right: verification sidebar ── -->
+  <div id="sidebar">
+    <h2>K2 Verification Engine</h2>
+
+    <!-- Verdict -->
+    <div id="verdict">
+      <div>
+        <span id="verdict-icon"></span>
+        <span id="verdict-label"></span>
+      </div>
+      <div id="verdict-proof"></div>
+    </div>
+
+    <!-- Bottlenecks -->
+    <div id="bottlenecks-section">
+      <h3>⚠ Bottlenecks</h3>
+      <ul id="bottleneck-list"></ul>
+    </div>
+
+    <!-- Reasoning trace -->
+    <div id="reasoning-section">
+      <h3>
+        Reasoning Trace
+        <span id="thinking-indicator"></span>
+      </h3>
+      <div id="reasoning-trace">
+        <span id="idle-hint">Run verification to see K2 think through the physics…</span>
+      </div>
+    </div>
   </div>
 
   <script>
   // ================================================================
   // PHYSICS CONSTANTS — change these to tune game feel
   // ================================================================
-  const GRAVITY       = 1800;  // px/s² — increase for heavier feel
-  const JUMP_STRENGTH =  600;  // px/s  — increase for higher jumps
-  const MOVE_SPEED    =  280;  // px/s  — horizontal speed
-  const FRICTION      =  0.75; // per-frame vx multiplier when no key held (0=instant stop)
-  const MAX_FALL      = 1400;  // px/s  — terminal velocity
-  const TILE_SIZE     =   32;  // px    — default tile size
+  const GRAVITY       = 1800;
+  const JUMP_STRENGTH =  600;
+  const MOVE_SPEED    =  280;
+  const FRICTION      =  0.75;
+  const MAX_FALL      = 1400;
+  const TILE_SIZE     =   32;
 
   // ================================================================
   // INPUT
@@ -77,9 +256,9 @@
     init() {
       window.addEventListener('keydown', e => {
         this._keys[e.code] = true;
-        // Prevent arrow keys from scrolling the page
         if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))
           e.preventDefault();
+        if (e.code === 'KeyR') spawnPlayer();
       });
       window.addEventListener('keyup', e => { this._keys[e.code] = false; });
     },
@@ -89,13 +268,9 @@
   };
 
   // ================================================================
-  // LEVEL — renders the grid and provides tile queries
+  // LEVEL
   // ================================================================
   class Level {
-    /**
-     * @param {Array<Array<number|string>>} grid  2-D array of tile values
-     * @param {number} tileSize  Pixel size of each cell
-     */
     constructor(grid, tileSize = TILE_SIZE) {
       this.grid     = grid;
       this.tileSize = tileSize;
@@ -106,13 +281,12 @@
     }
 
     getTile(row, col) {
-      if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return 1; // out-of-bounds = solid wall
+      if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return 1;
       return this.grid[row][col];
     }
 
     isSolid(row, col) { return this.getTile(row, col) === 1; }
 
-    /** Find the first occurrence of a tile type. Returns {row, col} or null. */
     findTile(type) {
       for (let r = 0; r < this.rows; r++)
         for (let c = 0; c < this.cols; c++)
@@ -120,7 +294,7 @@
       return null;
     }
 
-    draw(ctx, camX, camY) {
+    draw(ctx, camX, camY, bottlenecks = []) {
       const ts = this.tileSize;
 
       for (let r = 0; r < this.rows; r++) {
@@ -134,6 +308,17 @@
           else if (tile === 'G') this._drawGoal(ctx, x, y, ts);
           else if (tile === 'P') this._drawSpawn(ctx, x, y, ts);
         }
+      }
+
+      // Highlight bottleneck tiles with a red overlay
+      for (const b of bottlenecks) {
+        const x = b.x * ts - camX;
+        const y = b.y * ts - camY;
+        ctx.fillStyle = 'rgba(239,68,68,0.45)';
+        ctx.fillRect(x, y, ts, ts);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
       }
     }
 
@@ -159,19 +344,13 @@
       ctx.fillText('★', x + ts / 2, y + ts - 2);
     }
 
-    _drawSpawn(ctx, x, y, ts) { /* no marker in simple mode */ }
+    _drawSpawn(ctx, x, y, ts) {}
   }
 
   // ================================================================
-  // ENTITY (PLAYER) — physics + AABB collision
+  // ENTITY (PLAYER)
   // ================================================================
   class Entity {
-    /**
-     * @param {number} x  World x (left edge)
-     * @param {number} y  World y (top edge)
-     * @param {number} w  Width in pixels
-     * @param {number} h  Height in pixels
-     */
     constructor(x, y, w, h) {
       this.x = x;  this.y = y;
       this.vx = 0; this.vy = 0;
@@ -180,7 +359,6 @@
     }
 
     update(dt, level) {
-      // --- Horizontal movement ---
       if (Input.left())  this.vx = -MOVE_SPEED;
       if (Input.right()) this.vx =  MOVE_SPEED;
       if (!Input.left() && !Input.right()) {
@@ -188,17 +366,13 @@
         if (Math.abs(this.vx) < 0.5) this.vx = 0;
       }
 
-      // --- Jump (only when standing on ground) ---
       if (Input.jump() && this.onGround) {
         this.vy = -JUMP_STRENGTH;
         this.onGround = false;
       }
 
-      // --- Gravity ---
       this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
 
-      // --- Integrate position & resolve collisions ---
-      // X axis first, then Y — keeps corner collisions clean
       this.x += this.vx * dt;
       this._resolveX(level);
 
@@ -207,7 +381,6 @@
       this._resolveY(level);
     }
 
-    // Push player out of solid tiles on the X axis
     _resolveX(level) {
       const ts = level.tileSize;
       const left   = Math.floor(this.x / ts);
@@ -227,7 +400,6 @@
       }
     }
 
-    // Push player out of solid tiles on the Y axis
     _resolveY(level) {
       const ts = level.tileSize;
       const left   = Math.floor(this.x / ts);
@@ -262,11 +434,13 @@
 
   let level   = null;
   let player  = null;
-  let state   = 'playing'; // 'playing' | 'dead' | 'win'
+  let state   = 'playing';
   let spawnX  = 0;
   let spawnY  = 0;
-  let offsetX = 0; // pixel offset to centre level on canvas
+  let offsetX = 0;
   let offsetY = 0;
+  let currentGrid     = null;
+  let activeBottlenecks = [];
 
   function spawnPlayer() {
     const ts = level.tileSize;
@@ -274,45 +448,42 @@
     state    = 'playing';
   }
 
-  // ================================================================
-  // PUBLIC API — call this with the JSON grid from the converter
-  // ================================================================
   function loadGeneratedLevel(jsonGrid) {
     const W = canvas.width, H = canvas.height;
     const cols = jsonGrid[0]?.length ?? 1;
     const rows = jsonGrid.length;
-    // Fit entire level on canvas with a small margin
     const ts = Math.floor(Math.min((W - 16) / cols, (H - 16) / rows));
 
+    currentGrid = jsonGrid;
+    activeBottlenecks = [];
     level   = new Level(jsonGrid, ts);
     state   = 'playing';
     offsetX = Math.floor((W - level.width)  / 2);
     offsetY = Math.floor((H - level.height) / 2);
 
     const spawn = level.findTile('P');
-    // Player world coords live in grid space (no offset) — offset is draw-only
     spawnX = spawn ? spawn.col * ts : ts;
     spawnY = spawn ? spawn.row * ts : ts;
 
     spawnPlayer();
+    document.getElementById('verifyBtn').disabled = false;
+    resetSidebar();
   }
 
   // ================================================================
-  // UPDATE
+  // UPDATE / DRAW
   // ================================================================
   function update(dt) {
     if (state !== 'playing' || !player || !level) return;
 
     player.update(dt, level);
 
-    // Fell out of the bottom of the level
     if (player.y > level.height + 200) {
       state = 'dead';
-      setTimeout(spawnPlayer, 700);
+      setTimeout(spawnPlayer, 3000);
       return;
     }
 
-    // Tile-overlap checks for spikes and goal
     const ts = level.tileSize;
     const r0 = Math.floor(player.y / ts);
     const r1 = Math.floor((player.y + player.h - 1) / ts);
@@ -322,15 +493,12 @@
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         const tile = level.getTile(r, c);
-        if (tile === 'S') { state = 'dead'; setTimeout(spawnPlayer, 700); return; }
+        if (tile === 'S') { state = 'dead'; setTimeout(spawnPlayer, 3000); return; }
         if (tile === 'G') { state = 'win'; return; }
       }
     }
   }
 
-  // ================================================================
-  // DRAW
-  // ================================================================
   function draw() {
     const W = canvas.width, H = canvas.height;
     ctx.fillStyle = '#fff';
@@ -344,8 +512,7 @@
       return;
     }
 
-    // Draw level at its centred offset (camX = -offsetX so tiles land at the right spot)
-    level.draw(ctx, -offsetX, -offsetY);
+    level.draw(ctx, -offsetX, -offsetY, activeBottlenecks);
     if (player) player.draw(ctx, -offsetX, -offsetY);
 
     if (state === 'dead') {
@@ -354,7 +521,7 @@
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 32px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('YOU DIED — Respawning…', W / 2, H / 2);
+      ctx.fillText('YOU DIED — Respawning in 3s…', W / 2, H / 2);
     }
 
     if (state === 'win') {
@@ -373,7 +540,7 @@
   let lastTime = 0;
 
   function loop(timestamp) {
-    const dt = Math.min((timestamp - lastTime) / 1000, 0.05); // cap delta to 50 ms
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
     update(dt);
     draw();
@@ -381,18 +548,154 @@
   }
 
   // ================================================================
+  // VERIFICATION ENGINE UI
+  // ================================================================
+  function resetSidebar() {
+    const verdict    = document.getElementById('verdict');
+    const bnSection  = document.getElementById('bottlenecks-section');
+    const trace      = document.getElementById('reasoning-trace');
+    const indicator  = document.getElementById('thinking-indicator');
+
+    verdict.style.display   = 'none';
+    bnSection.style.display = 'none';
+    indicator.style.display = 'none';
+    trace.innerHTML = '<span id="idle-hint">Run verification to see K2 think through the physics…</span>';
+  }
+
+  function appendToTrace(text, cssClass) {
+    const trace = document.getElementById('reasoning-trace');
+
+    // Remove idle hint on first content
+    const hint = trace.querySelector('#idle-hint');
+    if (hint) hint.remove();
+
+    const span = document.createElement('span');
+    span.className = cssClass;
+    span.textContent = text;
+    trace.appendChild(span);
+
+    // Auto-scroll to bottom
+    trace.scrollTop = trace.scrollHeight;
+  }
+
+  function showVerdict(result) {
+    const verdict   = document.getElementById('verdict');
+    const icon      = document.getElementById('verdict-icon');
+    const label     = document.getElementById('verdict-label');
+    const proof     = document.getElementById('verdict-proof');
+    const bnSection = document.getElementById('bottlenecks-section');
+    const bnList    = document.getElementById('bottleneck-list');
+
+    verdict.className = result.solvable ? 'solvable' : 'unsolvable';
+    icon.textContent  = result.solvable ? '✓' : '✗';
+    label.textContent = result.solvable ? 'SOLVABLE' : 'UNSOLVABLE';
+    proof.textContent = result.proof || '';
+    verdict.style.display = 'block';
+
+    bnList.innerHTML = '';
+    if (result.bottlenecks && result.bottlenecks.length > 0) {
+      bnSection.style.display = 'block';
+      activeBottlenecks = result.bottlenecks;
+
+      for (const b of result.bottlenecks) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="coord">(${b.x}, ${b.y})</span>${b.reason}`;
+        bnList.appendChild(li);
+      }
+    } else {
+      bnSection.style.display = 'none';
+      activeBottlenecks = [];
+    }
+  }
+
+  document.getElementById('verifyBtn').addEventListener('click', async () => {
+    if (!currentGrid) return;
+
+    const btn       = document.getElementById('verifyBtn');
+    const indicator = document.getElementById('thinking-indicator');
+    const trace     = document.getElementById('reasoning-trace');
+
+    btn.disabled = true;
+    indicator.style.display = 'inline-block';
+    trace.innerHTML = '';
+    document.getElementById('verdict').style.display = 'none';
+    document.getElementById('bottlenecks-section').style.display = 'none';
+    activeBottlenecks = [];
+
+    try {
+      const response = await fetch('/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grid: currentGrid,
+          physicsParams: {
+            gravity:      GRAVITY,
+            jumpStrength: JUMP_STRENGTH,
+            moveSpeed:    MOVE_SPEED,
+            tileSize:     TILE_SIZE,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let msg = `HTTP ${response.status}`;
+        try { msg = JSON.parse(text).error || msg; } catch { msg = text.slice(0, 200) || msg; }
+        throw new Error(msg);
+      }
+
+      // Parse SSE stream
+      const reader  = response.body.getReader();
+      const decoder = new TextDecoder();
+      let   buffer  = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop(); // keep incomplete chunk
+
+        for (const part of parts) {
+          const eventMatch = part.match(/^event: (\w+)/m);
+          const dataMatch  = part.match(/^data: (.+)$/m);
+          if (!eventMatch || !dataMatch) continue;
+
+          const event = eventMatch[1];
+          let   data;
+          try { data = JSON.parse(dataMatch[1]); } catch { continue; }
+
+          if (event === 'thinking') {
+            appendToTrace(data.text, 'thinking-chunk');
+          } else if (event === 'answer') {
+            appendToTrace(data.text, 'answer-chunk');
+          } else if (event === 'result') {
+            showVerdict(data);
+          } else if (event === 'error') {
+            appendToTrace(`\n[ERROR] ${data.message}`, 'answer-chunk');
+          }
+        }
+      }
+    } catch (err) {
+      appendToTrace(`\n[ERROR] ${err.message}`, 'answer-chunk');
+    } finally {
+      btn.disabled = false;
+      indicator.style.display = 'none';
+    }
+  });
+
+  // ================================================================
   // BOOT
   // ================================================================
   Input.init();
   requestAnimationFrame(loop);
 
-  // ---- Load level from level_output.json on startup ----
   fetch('level_output.json')
     .then(r => r.json())
     .then(json => loadGeneratedLevel(json.data))
     .catch(err => console.error('Failed to load level_output.json:', err));
 
-  // ---- Upload button ----
   document.getElementById('imageInput').addEventListener('change', async function () {
     const file = this.files[0];
     if (!file) return;
@@ -414,7 +717,6 @@
       console.error(err);
     }
 
-    // Reset so the same file can be re-uploaded
     this.value = '';
   });
   </script>
