@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Share2, RefreshCw, Home, Star, ChevronRight, ChevronLeft, Brain, CheckCircle, XCircle, Lightbulb, AlertTriangle } from 'lucide-react'
+import { Share2, RefreshCw, Home, Star, ChevronRight, ChevronLeft, Brain, CheckCircle, XCircle, Lightbulb, AlertTriangle, Cpu } from 'lucide-react'
 
 // ──────────────────────────────────────────────
 // CONSTANTS
@@ -70,16 +70,30 @@ function drawGoal(ctx, x, y, ts, frame) {
   ctx.restore()
 }
 
-function drawPlayer(ctx, x, y, w, h) {
+function drawPlayer(ctx, x, y, w, h, cpuMode = false) {
   ctx.save()
-  ctx.fillStyle = '#f97316'
+  ctx.fillStyle = cpuMode ? '#00aaff' : '#f97316'
   ctx.fillRect(x, y, w, h)
-  ctx.fillStyle = '#fed7aa'
+  ctx.fillStyle = cpuMode ? '#aadeff' : '#fed7aa'
   ctx.fillRect(x + w * 0.2, y + h * 0.12, w * 0.6, h * 0.3)
-  ctx.fillStyle = '#1c1917'
+  ctx.fillStyle = cpuMode ? '#003366' : '#1c1917'
   ctx.fillRect(x + w * 0.22, y + h * 0.15, w * 0.18, h * 0.18)
   ctx.fillRect(x + w * 0.58, y + h * 0.15, w * 0.18, h * 0.18)
   ctx.restore()
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.arcTo(x + w, y, x + w, y + r, r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
+  ctx.lineTo(x + r, y + h)
+  ctx.arcTo(x, y + h, x, y + h - r, r)
+  ctx.lineTo(x, y + r)
+  ctx.arcTo(x, y, x + r, y, r)
+  ctx.closePath()
 }
 
 // ──────────────────────────────────────────────
@@ -222,6 +236,20 @@ export default function Play() {
   const [toast, setToast] = useState(null)
   const [score, setScore] = useState(0)
 
+  // Dev mode
+  const [isDevMode, setIsDevMode] = useState(false)
+  const devModeRef = useRef(false)
+
+  // Simulate mode
+  const [simulateMode, setSimulateMode] = useState(false)
+  const simulateModeRef = useRef(false)
+  const aiStateRef = useRef({ queue: [], current: null, timer: 0, lastCmdType: null })
+  const simDeathsRef = useRef([])   // death positions recorded during simulate runs
+  const k2ResultRef  = useRef(null) // latest K2 result, readable inside game loop
+
+  // Physics panel open/close
+  const [physPanelOpen, setPhysPanelOpen] = useState(true)
+
   // For '?' suggestion hover tooltip
   const camRef = useRef({ x: 0, y: 0 })
   const designSuggestionsRef = useRef([])
@@ -237,6 +265,18 @@ export default function Play() {
 
   // Sync phys state → physRef so game loop always reads latest values
   useEffect(() => { physRef.current = phys }, [phys])
+  // Sync devMode → devModeRef
+  useEffect(() => { devModeRef.current = isDevMode }, [isDevMode])
+  // Sync simulateMode → simulateModeRef; reset AI state on toggle-on
+  useEffect(() => {
+    simulateModeRef.current = simulateMode
+    if (simulateMode) {
+      aiStateRef.current = { queue: [], current: null, timer: 0, lastCmdType: null }
+      simDeathsRef.current = []  // fresh run — clear previous deaths
+    }
+  }, [simulateMode])
+  // Keep k2ResultRef in sync so the game loop can read it without closure issues
+  useEffect(() => { k2ResultRef.current = k2Result }, [k2Result])
 
   // Update a single physics param
   const setPhysParam = useCallback((key, val) => {
@@ -272,7 +312,219 @@ export default function Play() {
     const initialCoinCount = initialCoins.size
     function syncScore() { setScore(initialCoinCount - g.coins.size) }
 
+    // Record a simulate-mode death and trigger K2 re-analysis every 2 deaths
+    function recordSimDeath(col, row) {
+      simDeathsRef.current.push({ col, row })
+      const count = simDeathsRef.current.length
+      // Re-run K2 on 1st death, then every 2nd after
+      if (count === 1 || count % 2 === 0) {
+        verifyPhysRef.current = {
+          gravity: physRef.current.gravity, jumpStrength: physRef.current.jumpStrength,
+          moveSpeed: physRef.current.moveSpeed, tileSize: TILE_SIZE,
+        }
+        setVerifyTrigger(t => t + 1)
+        setToast(`K2 re-analysing after ${count} death${count > 1 ? 's' : ''}…`)
+      }
+    }
+
+    // ── AI Decision Tree ──────────────────────────────────────────
+    // Builds a physics-derived jump envelope each call (so slider
+    // changes take effect immediately), scans the surroundings, then
+    // chooses an action.  Philosophy: attempt any jump that is within
+    // the physics envelope.  Die trying > wait indefinitely.
+    function generateAICommands() {
+      // 1. Locate goal
+      let goalCol = null, goalRow = null
+      outer: for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (grid[r][c] === 'G') { goalCol = c; goalRow = r; break outer }
+      if (goalCol === null) return [{ type: 'WAIT', duration: 500, label: 'NO_GOAL' }]
+
+      const pCol = Math.floor((g.px + TILE * 0.375) / TILE)
+      const pRow = Math.floor((g.py + TILE * 0.45)  / TILE)
+      const dx   = goalCol - pCol
+      const dy   = goalRow - pRow  // positive = goal is lower
+
+      if (Math.abs(dx) < 1) {
+        if (dy < 0) return [{ type: 'JUMP', duration: 120, label: 'JUMP_TO_GOAL' }]
+        return [{ type: 'WAIT', duration: 200, label: 'WAIT_FALL' }]
+      }
+
+      const dir  = dx > 0 ? 'RIGHT' : 'LEFT'
+      const move = `MOVE_${dir}`
+      const jump = `JUMP_${dir}`
+      const col  = (n) => dir === 'RIGHT' ? pCol + n : pCol - n
+      const isSpike = (r, c) => grid[r]?.[c] === 'S'
+
+      // 2. Physics envelope — recalculated from current slider values every call
+      const { jumpStrength, gravity, moveSpeed } = physRef.current
+      const apexTiles  = jumpStrength * jumpStrength / (2 * gravity * TILE) // max height (tiles)
+      const airTime    = 2 * jumpStrength / gravity                          // full air time (s)
+      const reachTiles = (moveSpeed / Math.SQRT2) * airTime / TILE           // horizontal reach (tiles)
+
+      // 3. Ceiling clearance: free tiles directly above player
+      let ceilClear = 0
+      for (let r = pRow - 1; r >= Math.max(0, pRow - Math.ceil(apexTiles) - 1); r--) {
+        if (isSolid(grid, r, pCol)) break
+        ceilClear++
+      }
+      // Can we jump at all? Need the player on the ground with at least 1 tile above.
+      const canJump = g.onGround && ceilClear >= 1
+      // Can we clear an obstacle of H tiles? Checks both apex height and ceiling room.
+      const clears = (h) => apexTiles >= h && ceilClear >= h
+
+      // 4. Spike check along the low arc (ground level + 1 tile above).
+      //    Only spike tiles are hard blockers — ceilings just reduce clearance.
+      function spikeInPath() {
+        for (let i = 1; i <= Math.ceil(reachTiles); i++) {
+          const c = col(i)
+          if (isSpike(pRow, c) || isSpike(pRow - 1, c)) return true
+        }
+        return false
+      }
+
+      // 5. Gap width: consecutive missing-floor columns ahead
+      let gapWidth = 0
+      for (let i = 1; i <= Math.ceil(reachTiles) + 2; i++) {
+        if (!isSolid(grid, pRow + 1, col(i)) && !isSolid(grid, pRow, col(i))) gapWidth = i
+        else break
+      }
+
+      // 6. Per-column terrain for the first tile ahead
+      const t1 = {
+        wall:  isSolid(grid, pRow,     col(1)),
+        ceil:  isSolid(grid, pRow - 1, col(1)),
+        floor: isSolid(grid, pRow + 1, col(1)),
+        spike: isSpike(pRow, col(1)) || isSpike(pRow + 1, col(1)),
+      }
+      const gapAhead = isSolid(grid, pRow + 1, pCol) && !t1.floor && !t1.wall
+
+      // 7. K2 bottleneck awareness — check if K2 has flagged any tile
+      //    within the next few columns as a known hard spot.
+      const k2Bottlenecks = k2ResultRef.current?.bottlenecks ?? []
+      const nearBottleneck = k2Bottlenecks.find(b => {
+        const colDist = Math.abs(b.x - col(1))
+        return colDist <= Math.max(1, Math.ceil(reachTiles * 0.5)) && Math.abs(b.y - pRow) <= 2
+      })
+
+      // ── Decision tree ────────────────────────────────────────────
+      // Each branch first checks ideal conditions, then falls back to
+      // "attempt anyway" — the bot should try rather than stand still.
+
+      // Spike at foot level → must jump
+      if (t1.spike) {
+        if (canJump)
+          return [{ type: jump, duration: 420, label: clears(1) ? 'JUMP_SPIKE' : 'SPIKE_ATTEMPT' },
+                  { type: move, duration: 260, label: 'CLEAR_SPIKE' }]
+        return [{ type: 'WAIT', duration: 300, label: 'SPIKE_NO_ROOM' }]
+      }
+
+      // Wall ahead → hop over; height = 1 or 2 tiles
+      if (t1.wall) {
+        if (canJump) {
+          const h = t1.ceil ? 2 : 1
+          return [{ type: jump, duration: h > 1 ? 480 : 360, label: clears(h) ? 'JUMP_WALL' : 'WALL_ATTEMPT' },
+                  { type: move, duration: 260, label: 'CLEAR_WALL' }]
+        }
+        return [{ type: 'WAIT', duration: 300, label: 'WALL_NO_ROOM' }]
+      }
+
+      // Gap ahead → jump if within reach, otherwise attempt anyway
+      if (gapAhead) {
+        if (canJump)
+          return [{ type: jump, duration: 460, label: gapWidth <= reachTiles ? `JUMP_GAP_${gapWidth}T` : 'GAP_ATTEMPT' }]
+        return [{ type: 'WAIT', duration: 300, label: 'GAP_NO_JUMP' }]
+      }
+
+      // Goal is elevated → jump + move toward it
+      if (dy < -1 && g.onGround) {
+        if (canJump)
+          return [{ type: jump, duration: 140, label: clears(-dy) ? 'JUMP_ELEVATED' : 'ELEVATED_ATTEMPT' },
+                  { type: move, duration: 380, label: 'RISE_TO_GOAL' }]
+      }
+
+      // Default: walk toward goal.
+      // If K2 flagged this area as a bottleneck, creep forward slowly
+      // so the safety sensor has time to react before we commit.
+      if (nearBottleneck) {
+        const reason = nearBottleneck.reason?.slice(0, 40) ?? 'K2 flagged danger'
+        return [{ type: move, duration: 160, label: `K2_CAUTION: ${reason}` }]
+      }
+      const stride = Math.min(Math.abs(dx) * 60 + 200, 400)
+      return [{ type: move, duration: stride, label: 'APPROACH_GOAL' }]
+    }
+
+    // Advance the AI command queue each frame and apply keys to g.keys
+    const CODE_MAP = {
+      JUMP:       'g.jumpBufferTimer = JUMP_BUFFER_MS',
+      JUMP_RIGHT: 'g.jumpBufferTimer = JUMP_BUFFER_MS  |  keys.ArrowRight = true',
+      JUMP_LEFT:  'g.jumpBufferTimer = JUMP_BUFFER_MS  |  keys.ArrowLeft = true',
+      MOVE_RIGHT: 'keys.ArrowRight = true  →  pvx = +moveSpeed',
+      MOVE_LEFT:  'keys.ArrowLeft = true   →  pvx = -moveSpeed',
+      WAIT:       'keys = {}  (idle)',
+    }
+    function processAICommands(dt) {
+      const ai = aiStateRef.current
+
+      // ── Per-frame safety sensor ──────────────────────────────────
+      // While executing any MOVE command, check 1 tile ahead every frame.
+      // If a gap, spike, or wall appears, cancel immediately so the queue
+      // refills and generateAICommands() re-evaluates at the true edge.
+      if (ai.current?.type?.startsWith('MOVE')) {
+        const pCol = Math.floor((g.px + TILE * 0.375) / TILE)
+        const pRow = Math.floor((g.py + TILE * 0.45)  / TILE)
+        const step = ai.current.type === 'MOVE_RIGHT' ? 1 : -1
+        const look = pCol + step
+        const gapNow  = isSolid(grid, pRow + 1, pCol) && !isSolid(grid, pRow + 1, look)
+        const wallNow = isSolid(grid, pRow, look)
+        const spike   = grid[pRow]?.[look] === 'S' || grid[pRow + 1]?.[look] === 'S'
+        if (gapNow || wallNow || spike) {
+          ai.current = null; ai.queue = []; ai.timer = 0
+          g.keys = {}; return
+        }
+      }
+
+      ai.timer += dt * 1000
+
+      // Consume expired command
+      if (ai.current && ai.timer >= ai.current.duration) {
+        ai.timer = 0
+        ai.current = ai.queue.length > 0 ? ai.queue.shift() : null
+      }
+
+      // Refill empty queue — interleave 700ms pauses between every command
+      if (!ai.current && ai.queue.length === 0) {
+        const cmds = generateAICommands()
+        const withPauses = []
+        for (const c of cmds) {
+          withPauses.push(c)
+          withPauses.push({ type: 'WAIT', duration: 700, label: 'PAUSE' })
+        }
+        ai.queue = withPauses.slice(1)
+        ai.current = withPauses[0] ?? { type: 'WAIT', duration: 400, label: 'IDLE' }
+        ai.timer = 0
+      }
+
+      // Toast when a non-WAIT command starts
+      const cmd = ai.current
+      if (cmd && cmd.type !== 'WAIT' && cmd.type !== ai.lastCmdType) {
+        ai.lastCmdType = cmd.type
+        const code = CODE_MAP[cmd.type]
+        if (code) setToast(`↳ ${code}`)
+      }
+
+      // Apply command → virtual key presses
+      g.keys = {}
+      if (!cmd) return
+      if (cmd.type === 'MOVE_RIGHT' || cmd.type === 'JUMP_RIGHT') g.keys['ArrowRight'] = true
+      if (cmd.type === 'MOVE_LEFT'  || cmd.type === 'JUMP_LEFT')  g.keys['ArrowLeft']  = true
+      if ((cmd.type === 'JUMP' || cmd.type === 'JUMP_RIGHT' || cmd.type === 'JUMP_LEFT') && ai.timer < 50)
+        g.jumpBufferTimer = JUMP_BUFFER_MS
+    }
+
     function onKeyDown(e) {
+      // Any key press exits simulate mode and hands back control
+      if (simulateModeRef.current) { setSimulateMode(false); return }
       g.keys[e.code] = true
       if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault()
       if (e.code === 'KeyR') respawn()
@@ -291,8 +543,18 @@ export default function Play() {
       g.state = 'playing'
     }
 
+    let wasSim = false
     function physicsUpdate(dt) {
       if (g.state !== 'playing') return
+      // AI autopilot overrides keyboard input
+      if (simulateModeRef.current) {
+        processAICommands(dt)
+        wasSim = true
+      } else if (wasSim) {
+        // Simulate just turned off — clear any keys the AI left behind
+        g.keys = {}
+        wasSim = false
+      }
       const { gravity, jumpStrength, moveSpeed, friction, maxFall } = physRef.current
       const pw = TILE * 0.75
       const ph = TILE * 0.9
@@ -333,14 +595,17 @@ export default function Play() {
       const left1   = Math.floor(g.px / TILE)
       const right1  = Math.floor((g.px + pw - 1) / TILE)
       const top1    = Math.floor(g.py / TILE)
-      const bottom1 = Math.floor((g.py + ph - 1) / TILE)
+      const bottom1 = Math.floor((g.py + ph - 0.01) / TILE)
       for (let c = left1; c <= right1; c++) {
         if (g.pvy > 0 && isSolid(grid, bottom1, c)) { g.py = bottom1 * TILE - ph; g.pvy = 0; g.onGround = true }
         if (g.pvy < 0 && isSolid(grid, top1,    c)) { g.py = (top1 + 1) * TILE;   g.pvy = 0 }
       }
 
       if (wasOnGround && !g.onGround && g.pvy >= 0) g.coyoteTimer = COYOTE_MS
-      if (g.py > levelH + 200) { g.state = 'dead'; setTimeout(respawn, 400); return }
+      if (g.py > levelH + 200) {
+        if (simulateModeRef.current) recordSimDeath(Math.round(g.px / TILE), Math.round((g.py - 200) / TILE))
+        g.state = 'dead'; setTimeout(respawn, 400); return
+      }
 
       const top2    = Math.floor(g.py / TILE)
       const bottom2 = Math.floor((g.py + ph - 1) / TILE)
@@ -349,7 +614,10 @@ export default function Play() {
       for (let r = top2; r <= bottom2; r++) {
         for (let c = left2; c <= right2; c++) {
           const t = getTile(grid, r, c)
-          if (t === 'S') { g.state = 'dead'; setTimeout(respawn, 400); return }
+          if (t === 'S') {
+            if (simulateModeRef.current) recordSimDeath(c, r)
+            g.state = 'dead'; setTimeout(respawn, 400); return
+          }
           if (t === 'G') {
             g.state = 'win'
             setGameWon(true)
@@ -461,13 +729,168 @@ export default function Play() {
 
       // Player
       if (g.state === 'playing') {
-        drawPlayer(ctx, LABEL_LEFT + g.px - camX, LABEL_TOP + g.py - camY, pw, ph)
+        drawPlayer(ctx, LABEL_LEFT + g.px - camX, LABEL_TOP + g.py - camY, pw, ph, simulateModeRef.current)
+      }
+
+      // ── Simulate Mode overlay ──
+      if (simulateModeRef.current) {
+        const ai = aiStateRef.current
+        const cmd = ai.current
+
+        // "CPU" label above player
+        if (g.state === 'playing') {
+          const hx = LABEL_LEFT + g.px - camX + pw / 2
+          const hy = LABEL_TOP  + g.py - camY - 12
+          ctx.save()
+          ctx.font = 'bold 9px monospace'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.shadowColor = '#00aaff'
+          ctx.shadowBlur = 8
+          ctx.fillStyle = '#00d4ff'
+          ctx.fillText('CPU', hx, hy)
+          ctx.restore()
+        }
+
+        // Command Terminal box (top-left of game area)
+        const TX = LABEL_LEFT + 8, TY = LABEL_TOP + 8, TW = 200, TH = 120
+        ctx.save()
+        ctx.fillStyle = 'rgba(0,8,22,0.90)'
+        roundRect(ctx, TX, TY, TW, TH, 5)
+        ctx.fill()
+        ctx.strokeStyle = '#00aaff'
+        ctx.lineWidth = 1
+        roundRect(ctx, TX, TY, TW, TH, 5)
+        ctx.stroke()
+
+        ctx.font = 'bold 9px monospace'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+
+        // Header
+        ctx.fillStyle = '#00d4ff'
+        const deaths = simDeathsRef.current.length
+        const deathBadge = deaths > 0 ? `  [${deaths} death${deaths > 1 ? 's' : ''}]` : ''
+        ctx.fillText(`> CPU AUTOPILOT ACTIVE${deathBadge}`, TX + 8, TY + 7)
+        ctx.strokeStyle = 'rgba(0,170,255,0.2)'
+        ctx.lineWidth = 1
+        ctx.beginPath(); ctx.moveTo(TX + 6, TY + 20); ctx.lineTo(TX + TW - 6, TY + 20); ctx.stroke()
+
+        if (cmd) {
+          const progress = Math.min(ai.timer / cmd.duration, 1)
+          const timeLeft = Math.max(0, (cmd.duration - ai.timer) / 1000).toFixed(1)
+          ctx.fillStyle = '#ffffff'
+          ctx.fillText(`EXEC: ${cmd.type}`, TX + 8, TY + 26)
+          ctx.fillStyle = 'rgba(0,200,255,0.5)'
+          ctx.fillText(`WHY: ${cmd.label}`, TX + 8, TY + 38)
+
+          // Progress bar
+          ctx.fillStyle = '#001a2e'
+          ctx.fillRect(TX + 8, TY + 52, TW - 16, 5)
+          ctx.fillStyle = '#00aaff'
+          ctx.fillRect(TX + 8, TY + 52, (TW - 16) * progress, 5)
+          ctx.fillStyle = 'rgba(180,230,255,0.6)'
+          ctx.fillText(`${timeLeft}s`, TX + TW - 26, TY + 47)
+        }
+
+        // Queue preview
+        ctx.strokeStyle = 'rgba(0,170,255,0.2)'
+        ctx.beginPath(); ctx.moveTo(TX + 6, TY + 62); ctx.lineTo(TX + TW - 6, TY + 62); ctx.stroke()
+        ctx.fillStyle = 'rgba(0,200,255,0.7)'
+        ctx.fillText('QUEUE:', TX + 8, TY + 67)
+        const preview = ai.queue.slice(0, 3)
+        if (preview.length === 0) {
+          ctx.fillStyle = '#334455'
+          ctx.fillText('  computing…', TX + 8, TY + 79)
+        }
+        preview.forEach((qc, i) => {
+          ctx.fillStyle = i === 0 ? '#aaffcc' : 'rgba(100,160,180,0.6)'
+          ctx.fillText(`  ${i + 1}. ${qc.type}  (${(qc.duration / 1000).toFixed(1)}s)`, TX + 8, TY + 79 + i * 13)
+        })
+
+        // Cancel hint
+        ctx.fillStyle = 'rgba(0,150,220,0.35)'
+        ctx.fillText('[ PRESS ANY KEY TO CANCEL ]', TX + 8, TY + TH - 10)
+        ctx.restore()
       }
 
       // Dead flash
       if (g.state === 'dead') {
         ctx.fillStyle = 'rgba(239,68,68,0.25)'
         ctx.fillRect(LABEL_LEFT, LABEL_TOP, gameW, gameH)
+      }
+
+      // ── Dev Mode overlay ──
+      if (devModeRef.current) {
+        const pw2 = TILE * 0.75
+        const ph2 = TILE * 0.9
+
+        // Tile hitboxes
+        ctx.save()
+        ctx.setLineDash([3, 3])
+        ctx.lineWidth = 1
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+            const t = getTile(grid, r, c)
+            if (t === 0) continue
+            const tx = LABEL_LEFT + c * TILE - camX
+            const ty = LABEL_TOP  + r * TILE - camY
+            if (t === 1 || t === 'T') { ctx.strokeStyle = '#00ff41'; ctx.strokeRect(tx + 0.5, ty + 0.5, TILE - 1, TILE - 1) }
+            else if (t === 'S')       { ctx.strokeStyle = '#ff4444'; ctx.strokeRect(tx + 0.5, ty + 0.5, TILE - 1, TILE - 1) }
+            else if (t === 'G')       { ctx.strokeStyle = '#22c55e'; ctx.strokeRect(tx + 0.5, ty + 0.5, TILE - 1, TILE - 1) }
+          }
+        }
+        ctx.setLineDash([])
+        ctx.restore()
+
+        // Player hitbox + velocity arrow + label
+        if (g.state === 'playing') {
+          const sx = LABEL_LEFT + g.px - camX
+          const sy = LABEL_TOP  + g.py - camY
+
+          // Hitbox
+          ctx.save()
+          ctx.strokeStyle = '#ff9900'
+          ctx.lineWidth = 2
+          ctx.strokeRect(sx, sy, pw2, ph2)
+
+          // Velocity arrow
+          const cx2 = sx + pw2 / 2
+          const cy2 = sy + ph2 / 2
+          const scale = 0.08
+          const ex = cx2 + g.pvx * scale
+          const ey = cy2 + g.pvy * scale
+          const len = Math.hypot(ex - cx2, ey - cy2)
+          ctx.strokeStyle = '#ff9900'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.moveTo(cx2, cy2)
+          ctx.lineTo(ex, ey)
+          if (len > 4) {
+            const ang = Math.atan2(ey - cy2, ex - cx2)
+            ctx.lineTo(ex - 7 * Math.cos(ang - 0.4), ey - 7 * Math.sin(ang - 0.4))
+            ctx.moveTo(ex, ey)
+            ctx.lineTo(ex - 7 * Math.cos(ang + 0.4), ey - 7 * Math.sin(ang + 0.4))
+          }
+          ctx.stroke()
+
+          // State label
+          const col2 = Math.round(g.px / TILE)
+          const row2 = Math.round(g.py / TILE)
+          const pState = g.onGround ? 'GROUNDED' : (g.pvy < 0 ? 'JUMPING' : 'FALLING')
+          const displayVy = g.onGround ? 0 : Math.round(g.pvy)
+          const labelX = sx
+          const labelY = sy - 34
+          ctx.fillStyle = 'rgba(0,0,0,0.75)'
+          ctx.fillRect(labelX, labelY, 136, 30)
+          ctx.fillStyle = '#00ff41'
+          ctx.font = '9px monospace'
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(`[col:${col2} row:${row2}]  vx:${Math.round(g.pvx)}`, labelX + 3, labelY + 3)
+          ctx.fillText(`vy:${displayVy}  ${pState}`, labelX + 3, labelY + 15)
+          ctx.restore()
+        }
       }
 
       ctx.restore() // end clip
@@ -534,7 +957,7 @@ export default function Play() {
         const res = await fetch('/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ grid: levelData.data, physicsParams: verifyPhysRef.current }),
+          body: JSON.stringify({ grid: levelData.data, physicsParams: verifyPhysRef.current, deathPositions: simDeathsRef.current }),
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: 'Request failed' }))
@@ -601,6 +1024,8 @@ export default function Play() {
 
   // Canvas hover — show tooltip for '?' suggestion markers
   const handleCanvasMouseMove = useCallback((e) => {
+    // Mouse movement exits simulate mode
+    if (simulateModeRef.current) { setSimulateMode(false); return }
     if (!canvasRef.current || designSuggestionsRef.current.length === 0) {
       setHoveredSuggestion(null); return
     }
@@ -667,26 +1092,44 @@ export default function Play() {
     <div className="flex h-dvh bg-[#0f0e1a] overflow-hidden">
 
       {/* ── Physics Sidebar ── */}
-      <div className="w-52 flex-shrink-0 bg-[#0d0b1e] border-r border-white/10 flex flex-col p-4 gap-4 overflow-y-auto">
-        <p className="text-[10px] font-bold tracking-widest uppercase text-orange-400 border-b border-white/10 pb-2">
-          Physics Tuner
+      <div className={`flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ${physPanelOpen ? 'w-52' : 'w-0'}`}>
+      <div className={`w-52 flex-shrink-0 flex flex-col p-4 gap-4 overflow-y-auto h-full transition-colors duration-300 ${
+        isDevMode
+          ? 'bg-[#060d06] border-r border-[#00ff41]/30'
+          : 'bg-[#0d0b1e] border-r border-white/10'
+      }`}>
+        <p className={`text-[10px] font-bold tracking-widest uppercase border-b pb-2 font-mono ${
+          isDevMode ? 'text-[#00ff41] border-[#00ff41]/30' : 'text-orange-400 border-white/10'
+        }`}>
+          {isDevMode ? '> PHYSICS_SYS' : 'Physics Tuner'}
         </p>
-        <div className="flex flex-col gap-4">
-          <SliderRow label="Gravity"       min={400}  max={4000} step={100}  decimals={0} value={phys.gravity}      onChange={v => setPhysParam('gravity',      v)} />
-          <SliderRow label="Jump Strength" min={100}  max={1400} step={50}   decimals={0} value={phys.jumpStrength} onChange={v => setPhysParam('jumpStrength', v)} />
-          <SliderRow label="Move Speed"    min={50}   max={800}  step={10}   decimals={0} value={phys.moveSpeed}    onChange={v => setPhysParam('moveSpeed',    v)} />
-          <SliderRow label="Friction"      min={0.10} max={1.00} step={0.05} decimals={2} value={phys.friction}     onChange={v => setPhysParam('friction',     v)} />
-          <SliderRow label="Max Fall"      min={200}  max={3000} step={100}  decimals={0} value={phys.maxFall}      onChange={v => setPhysParam('maxFall',      v)} />
+        <div className={`flex flex-col gap-4 ${isDevMode ? '[&_span]:font-mono [&_span]:text-[#00ff41]' : ''}`}>
+          <SliderRow label={isDevMode ? 'gravity'       : 'Gravity'}       min={400}  max={4000} step={100}  decimals={0} value={phys.gravity}      onChange={v => setPhysParam('gravity',      v)} />
+          <SliderRow label={isDevMode ? 'jump_force'    : 'Jump Strength'} min={100}  max={1400} step={50}   decimals={0} value={phys.jumpStrength} onChange={v => setPhysParam('jumpStrength', v)} />
+          <SliderRow label={isDevMode ? 'player_speed'  : 'Move Speed'}    min={50}   max={800}  step={10}   decimals={0} value={phys.moveSpeed}    onChange={v => setPhysParam('moveSpeed',    v)} />
+          <SliderRow label={isDevMode ? 'friction'      : 'Friction'}      min={0.10} max={1.00} step={0.05} decimals={2} value={phys.friction}     onChange={v => setPhysParam('friction',     v)} />
+          <SliderRow label={isDevMode ? 'max_fall'      : 'Max Fall'}      min={200}  max={3000} step={100}  decimals={0} value={phys.maxFall}      onChange={v => setPhysParam('maxFall',      v)} />
         </div>
+        {isDevMode && (
+          <div className="bg-[#0a1a0a] border border-[#00ff41]/20 rounded-lg p-2 font-mono text-[9px] text-[#00ff41]/70 space-y-0.5">
+            <p>grav: {phys.gravity} px/s²</p>
+            <p>jump: {phys.jumpStrength} px/s</p>
+            <p>spd:  {phys.moveSpeed} px/s</p>
+            <p>fric: {phys.friction.toFixed(2)}</p>
+          </div>
+        )}
         <button
           onClick={handleUpdateAnalysis}
           disabled={k2Phase === 'thinking'}
-          className="mt-auto py-3 px-4 bg-orange-500/15 border border-orange-500/40 text-orange-400
-                     font-bold text-xs tracking-widest uppercase rounded-xl hover:bg-orange-500/25
-                     transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className={`mt-auto py-3 px-4 font-bold text-xs tracking-widest uppercase rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            isDevMode
+              ? 'bg-[#0a1f0a] border border-[#00ff41]/50 text-[#00ff41] hover:bg-[#0f2f0f] font-mono'
+              : 'bg-orange-500/15 border border-orange-500/40 text-orange-400 hover:bg-orange-500/25'
+          }`}
         >
-          ⚙ Update Analysis
+          {isDevMode ? '> RUN_ANALYSIS' : '⚙ Update Analysis'}
         </button>
+      </div>
       </div>
 
       {/* ── Main column ── */}
@@ -707,6 +1150,27 @@ export default function Play() {
           {levelData.data?.flat().some(t => t === 'C') && (
             <span className="text-amber-400 text-sm font-bold">🪙 {score}</span>
           )}
+          <button
+            onClick={() => setSimulateMode(s => !s)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs font-bold tracking-tight transition-all border ${
+              simulateMode
+                ? 'bg-[#001a2e] border-[#00aaff] text-[#00d4ff] shadow-[0_0_10px_#00aaff44]'
+                : 'bg-[#111] border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500'
+            }`}
+          >
+            <Cpu size={12} />
+            {simulateMode ? 'AUTO: ON_' : 'AUTO'}
+          </button>
+          <button
+            onClick={() => setIsDevMode(d => !d)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs font-bold tracking-tight transition-all border ${
+              isDevMode
+                ? 'bg-[#0a1f0a] border-[#00ff41] text-[#00ff41] shadow-[0_0_10px_#00ff4144]'
+                : 'bg-[#111] border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500'
+            }`}
+          >
+            {isDevMode ? '> DEV: ON_' : '> DEV'}
+          </button>
           <button onClick={handleShare} aria-label="Share this level"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-stone-300 hover:bg-white/20 hover:text-white transition-colors text-sm font-medium">
             <Share2 size={14} /> Share
@@ -888,7 +1352,17 @@ export default function Play() {
             </div>
           </div>
 
-          {/* Panel toggle */}
+          {/* Left panel toggle */}
+          <button
+            onClick={() => setPhysPanelOpen(o => !o)}
+            className="absolute top-1/2 -translate-y-1/2 z-10 w-5 h-10 bg-[#16132a] border border-white/10
+                       rounded-r-lg flex items-center justify-center text-stone-400 hover:text-white transition-colors"
+            style={{ left: '0px', transition: 'left 0.3s' }}
+          >
+            {physPanelOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+          </button>
+
+          {/* Right panel toggle */}
           <button
             onClick={() => setPanelOpen(o => !o)}
             className="absolute top-1/2 -translate-y-1/2 z-10 w-5 h-10 bg-[#16132a] border border-white/10

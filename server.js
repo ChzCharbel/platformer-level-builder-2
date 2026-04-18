@@ -28,7 +28,7 @@ app.post('/upload', upload.single('image'), async (req, res) => {
 
 // POST /verify — stream K2 reasoning trace + final solvability verdict via SSE
 app.post('/verify', async (req, res) => {
-  const { grid, physicsParams } = req.body;
+  const { grid, physicsParams, deathPositions } = req.body;
 
   if (!Array.isArray(grid) || grid.length === 0) {
     return res.status(400).json({ error: 'No grid provided.' });
@@ -45,7 +45,7 @@ app.post('/verify', async (req, res) => {
   };
 
   try {
-    for await (const chunk of verifyLevelSolvability(grid, physicsParams || {})) {
+    for await (const chunk of verifyLevelSolvability(grid, physicsParams || {}, deathPositions || [])) {
       if (chunk.type === 'thinking') {
         send('thinking', { text: chunk.text });
       } else if (chunk.type === 'answer') {

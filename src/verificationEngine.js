@@ -9,7 +9,7 @@ const K2_MODEL    = process.env.K2_MODEL        || 'MBZUAI-IFM/K2-Think-v2';
 /**
  * Convert grid to a compact level description for K2.
  */
-function buildPrompt(grid, physicsParams) {
+function buildPrompt(grid, physicsParams, deathPositions = []) {
   const { gravity, jumpStrength, moveSpeed, tileSize } = physicsParams;
 
   const surfaces = [], spikes = [];
@@ -227,7 +227,16 @@ Return ONLY this JSON object — no words outside it:
 Notes for design_suggestions:
 - Include 1–4 tips pointing out spots that could be improved (dangerous gaps, lonely floating platforms, dead ends, a missing start or finish).
 - If the START or FINISH is missing from the level, set suggestedSpawn / suggestedGoal to a good empty cell where the kid should draw it.
-- If both are present, set suggestedSpawn and suggestedGoal to null.`;
+- If both are present, set suggestedSpawn and suggestedGoal to null.${deathPositions.length > 0 ? `
+
+AUTOPILOT DEATH LOG (${deathPositions.length} recorded):
+${deathPositions.map((d, i) => `  Death ${i + 1}: col ${d.col}, row ${d.row}`).join('\n')}
+
+The AI autopilot died at the positions above. Analyse each death spot carefully:
+  - Is there a spike cluster, a gap, or a tricky platform edge causing this?
+  - Update your bottlenecks list to include each death location with a clear kid-friendly explanation of WHY the bot gets stuck there.
+  - If the same area caused multiple deaths, flag it as extra dangerous.
+  - Use this data to improve your design_suggestions — what tile change near each death spot would fix the problem?` : ''}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +419,7 @@ async function* mockVerification(grid) {
   }};
 }
 
-async function* verifyLevelSolvability(grid, physicsParams) {
+async function* verifyLevelSolvability(grid, physicsParams, deathPositions = []) {
   const params = {
     gravity:      physicsParams.gravity      ?? 1800,
     jumpStrength: physicsParams.jumpStrength ?? 600,
@@ -418,7 +427,7 @@ async function* verifyLevelSolvability(grid, physicsParams) {
     tileSize:     physicsParams.tileSize     ?? 32,
   };
 
-  const prompt = buildPrompt(grid, params);
+  const prompt = buildPrompt(grid, params, deathPositions);
   if (!prompt) {
     yield { type: 'done', result: {
       solvable: false,
