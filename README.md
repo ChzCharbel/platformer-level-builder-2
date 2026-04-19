@@ -1,120 +1,154 @@
 # HopIt
 
-Turn a hand-drawn sketch into a playable platformer level in seconds — powered by Gemini Vision AI.
+**Turn a hand-drawn sketch into a playable platformer level in seconds.**
 
-## What it does
+> 🎮 **Live demo → [hopit.us](https://hopit.us)**
 
-1. **Sketch** a platformer level on grid paper using simple symbols
-2. **Upload** a photo or capture it with your camera
-3. **Gemini 2.5 Flash** reads platforms, spikes, coins, goal, and spawn from the image
-4. **Play** the generated level instantly in the browser
-5. **Edit** live — paint and erase tiles directly on the canvas
-6. **Verify** with K2 Think AI for solvability analysis and design suggestions
-7. **Hard Mode** — Gemini remixes your level with walkers, saws, crumble tiles, and more
+Sketch a level on grid paper, snap a photo, and HopIt converts it into a fully playable browser game — complete with AI solvability analysis and an adaptive Hard Mode that remixes the level based on exactly where you died.
+
+---
+
+## Features
+
+- **Sketch → Play** — Upload a photo of any hand-drawn grid and play it instantly
+- **Live Editor** — Paint and erase tiles directly on the canvas
+- **K2 Think Analysis** — Streaming AI reasoning verifies if your level is beatable and flags design issues
+- **Hard Mode** — Claude remixes your level with walkers, saws, crumble tiles, and flyers targeted at your death spots
+- **Physics Tuner** — Adjust gravity, jump strength, speed, and friction in real time
+- **Auto Mode** — Built-in decision-tree AI plays the level for you
+
+---
 
 ## Drawing symbols
 
-| Draw this | Means |
-|-----------|-------|
-| Filled / shaded rectangle | Platform tile |
+| Draw this | Tile |
+|-----------|------|
+| Filled / shaded rectangle | Platform |
 | Triangle △ | Spike (instant death) |
 | Circle ○ | Player spawn |
 | Star ★ | Goal (finish) |
+
+---
+
+## Running locally
+
+### Prerequisites
+
+- **Node.js 18+**
+- **Gemini API key** — [Get one free at Google AI Studio](https://aistudio.google.com/app/apikey) (image → level conversion)
+- **Anthropic API key** — [console.anthropic.com](https://console.anthropic.com) (Hard Mode remixing)
+- **K2 Think API key** — [api.k2think.ai](https://api.k2think.ai) (optional — solvability analysis panel)
+
+### 1. Clone & install
+
+```bash
+git clone https://github.com/merkusvictory/platformer-level-builder.git
+cd platformer-level-builder
+
+# Install backend dependencies
+cd backend && npm install
+
+# Install frontend dependencies
+cd ../frontend && npm install
+```
+
+### 2. Configure environment variables
+
+```bash
+# From the repo root
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+Edit **`backend/.env`**:
+
+```env
+# Required — converts uploaded images to level grids
+GEMINI_API_KEY=your_gemini_key_here
+
+# Required — powers Hard Mode level remixing (Claude Haiku)
+ANTHROPIC_API_KEY=your_anthropic_key_here
+
+# Optional — enables the K2 Think solvability analysis panel
+K2_API_KEY=your_k2_key_here
+K2_API_BASE_URL=https://api.k2think.ai/v1
+
+# Leave as-is for local dev; set to your Vercel URL in production
+FRONTEND_URL=http://localhost:5173
+
+# Port (default 3000)
+PORT=3000
+```
+
+Edit **`frontend/.env`**:
+
+```env
+# Leave empty for local dev — Vite proxy forwards /api to localhost:3000
+# Set to your Render backend URL for production
+VITE_API_URL=
+```
+
+### 3. Start the servers
+
+Open two terminals:
+
+```bash
+# Terminal 1 — backend (port 3000)
+cd backend
+node server.js
+
+# Terminal 2 — frontend (port 5173)
+cd frontend
+npm run dev
+```
+
+Open **[http://localhost:5173](http://localhost:5173)**.
+
+The Vite dev server automatically proxies `/upload`, `/verify`, and `/api` to the backend — no CORS issues, no extra config.
+
+---
 
 ## Project structure
 
 ```
 platformer-level-builder/
-├── backend/                        # Node.js / Express API (port 3000)
-│   ├── server.js                   # 3 API routes: /upload /verify /api/levels/hard-mode
-│   ├── index.js                    # CLI: node index.js <image>
-│   ├── .env                        # API keys (never committed)
-│   ├── .env.example                # Key reference
+├── backend/
+│   ├── server.js                   # Express API — /upload /verify /api/levels/hard-mode
+│   ├── .env.example                # All environment variables with descriptions
 │   ├── render.yaml                 # Render deployment config
 │   └── src/
 │       ├── geminiPipeline.js       # Gemini Vision → level JSON
 │       ├── levelConverter.js       # Pipeline orchestration
-│       ├── verificationEngine.js   # BFS + K2 Think solvability stream
-│       ├── hardModeEngine.js       # Deterministic hard mode + Claude fallback
-│       ├── agents/hardModeAgent.js # Gemini hard-mode agent
+│       ├── verificationEngine.js   # BFS reachability + K2 Think streaming
+│       ├── hardModeEngine.js       # Deterministic hard mode fallback
+│       ├── agents/
+│       │   └── hardModeAgent.js    # Claude Haiku hard-mode remixer
 │       └── config.js               # Grid dimensions (50×35)
-└── frontend/                       # React + Vite app (port 5173)
+└── frontend/
     ├── vite.config.js              # Dev proxy → localhost:3000
-    ├── vercel.json                 # SPA rewrite for Vercel
+    ├── .env.example                # Frontend environment variables
+    ├── vercel.json                 # SPA rewrite rule for Vercel
     └── src/
         ├── pages/
-        │   ├── Upload.jsx          # Upload, camera, demo picker
-        │   ├── Processing.jsx      # Upload progress + spinner
-        │   └── Play.jsx            # Full game engine (canvas, physics, AI, editor)
+        │   ├── Upload.jsx          # Upload, camera capture, demo picker
+        │   ├── Processing.jsx      # Upload progress
+        │   └── Play.jsx            # Game engine — canvas, physics, AI, editor
         ├── data/demoLevels.js      # 5 built-in demo levels
-        └── components/bits/        # Aurora, SplitText, StarBorder
+        └── components/             # Aurora, SplitText, StarBorder UI primitives
 ```
 
-## Local development
+---
 
-### Prerequisites
-
-- Node.js 18+
-- [Gemini API key](https://aistudio.google.com/app/apikey)
-- K2 Think API key (optional — for solvability analysis)
-- Anthropic API key (optional — Claude Haiku hard-mode fallback)
-
-### Setup
-
-```bash
-# Backend
-cd backend
-cp .env.example .env      # fill in your API keys
-npm install
-node server.js            # runs on port 3000
-
-# Frontend (separate terminal)
-cd frontend
-npm install
-npm run dev               # runs on port 5173
-```
-
-Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/upload`, `/verify`, and `/api` to the backend automatically.
-
-### Backend environment variables (`backend/.env`)
-
-```env
-GEMINI_API_KEY=           # required — image → level conversion
-K2_API_KEY=               # optional — solvability verification
-K2_API_BASE_URL=https://api.k2think.ai/v1
-ANTHROPIC_API_KEY=        # optional — Claude Haiku hard-mode fallback
-FRONTEND_URL=             # production only — your Vercel URL (for CORS)
-```
-
-## Deployment
-
-**Frontend → Vercel**
-
-| Setting | Value |
-|---------|-------|
-| Root directory | `frontend` |
-| Build command | `npm run build` |
-| Output directory | `dist` |
-| Env variable | `VITE_API_URL` = your Render backend URL |
-
-**Backend → Render**
-
-| Setting | Value |
-|---------|-------|
-| Root directory | `backend` |
-| Build command | `npm install` |
-| Start command | `node server.js` |
-| Env variables | Same as `backend/.env.example` + `FRONTEND_URL` = your Vercel URL |
-
-> Deploy Render first → copy its URL → paste into Vercel's `VITE_API_URL` → deploy Vercel → copy its URL → paste into Render's `FRONTEND_URL` → redeploy Render.
-
-## API
+## API reference
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/upload` | Multipart image → level JSON |
+| `POST` | `/upload` | Multipart image → SSE stream → level JSON |
 | `POST` | `/verify` | SSE stream — BFS + K2 Think solvability verdict |
-| `POST` | `/api/levels/hard-mode` | Gemini hard-mode remix (deterministic fallback) |
+| `POST` | `/api/levels/hard-mode` | Claude hard-mode remix (deterministic fallback) |
+| `GET`  | `/health` | Health check |
+
+---
 
 ## Tile reference
 
@@ -132,20 +166,50 @@ FRONTEND_URL=             # production only — your Vercel URL (for CORS)
 | `"B"` | Crumble platform |
 | `"J"` | Spring |
 
+---
+
 ## Controls
 
-| Key | Action |
-|-----|--------|
+| Input | Action |
+|-------|--------|
 | Arrow keys / WASD | Move |
 | Space / Up / W | Jump |
 | R | Respawn |
 
-**Edit mode** (click ✏ EDIT): click/drag to paint, right-click to erase, Ctrl+Z to undo.
+**Edit mode** (click ✏ EDIT): click or drag to paint tiles, right-click to erase, Ctrl+Z to undo.
+
+---
+
+## Deployment
+
+### Frontend → Vercel
+
+| Setting | Value |
+|---------|-------|
+| Root directory | `frontend` |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| `VITE_API_URL` | Your Render backend URL |
+
+### Backend → Render
+
+| Setting | Value |
+|---------|-------|
+| Root directory | `backend` |
+| Build command | `npm install` |
+| Start command | `node server.js` |
+| Env vars | Same as `backend/.env.example` |
+
+> **Deploy order:** Render first → copy URL → set `VITE_API_URL` in Vercel → deploy Vercel → copy URL → set `FRONTEND_URL` in Render → redeploy Render.
+
+---
 
 ## Tech stack
 
-**Frontend** — React 19, Vite 8, Tailwind CSS 4, Framer Motion, HTML5 Canvas
-
-**Backend** — Node.js, Express 5, Multer, Sharp
-
-**AI** — Gemini 2.5 Flash (vision + hard mode), K2 Think V2 (solvability), Claude Haiku (fallback)
+| Layer | Stack |
+|-------|-------|
+| Frontend | React 19, Vite, Tailwind CSS 4, Framer Motion, HTML5 Canvas |
+| Backend | Node.js, Express 5, Multer, Sharp |
+| Vision AI | Gemini 2.5 Flash — image to level grid |
+| Hard Mode AI | Claude Haiku (Anthropic) — adaptive level remixing |
+| Solvability AI | K2 Think V2 (MBZUAI) — streaming BFS reasoning |
