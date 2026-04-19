@@ -179,6 +179,27 @@
     #createBtn:active  { transform: scale(0.98); }
     #createBtn:disabled { background: #252540; color: #444; cursor: default; }
 
+    /* ── HARD MODE button ── */
+    #hardModeBtn {
+      padding: 13px;
+      background: #1a0a0a;
+      color: #ef4444;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #hardModeBtn:hover:not(:disabled) { background: #2d0f0f; }
+    #hardModeBtn:active { transform: scale(0.98); }
+    #hardModeBtn:disabled { opacity: 0.35; cursor: default; }
+    #hardModeBtn.active { background: #2d0000; border-color: #ef4444; }
+
     /* ── Physics sidebar sliders ── */
     .sliders-wrap {
       display: flex;
@@ -542,6 +563,7 @@
     <input type="file" id="imageInput" accept="image/*">
 
     <button id="createBtn">▶ CREATE</button>
+    <button id="hardModeBtn" disabled>💀 HARD MODE</button>
   </div>
 
   <!-- ══ PHYSICS SIDEBAR ══ -->
@@ -698,7 +720,10 @@
       return this.grid[row][col];
     }
 
-    isSolid(row, col) { return this.getTile(row, col) === 1; }
+    isSolid(row, col) {
+      const t = this.getTile(row, col);
+      return t === 1 || t === 'T' || t === 'B' || t === 'J';
+    }
 
     findTile(type) {
       for (let r = 0; r < this.rows; r++)
@@ -714,10 +739,14 @@
           const tile = this.grid[r][c];
           const x = c * ts - camX;
           const y = r * ts - camY;
-          if      (tile === 1)   this._drawPlatform(ctx, x, y, ts);
+          if      (tile === 1 || tile === 'T') this._drawPlatform(ctx, x, y, ts);
           else if (tile === 'S') this._drawSpike(ctx, x, y, ts);
           else if (tile === 'G') this._drawGoal(ctx, x, y, ts);
           else if (tile === 'P') this._drawSpawn(ctx, x, y, ts);
+          else if (tile === 'B') this._drawCrumble(ctx, x, y, ts);
+          else if (tile === 'J') this._drawSpring(ctx, x, y, ts);
+          else if (tile === 'Z') this._drawSaw(ctx, x, y, ts);
+          else if (tile === 'W') this._drawWalker(ctx, x, y, ts);
         }
       }
 
@@ -781,6 +810,71 @@
     }
 
     _drawSpawn(ctx, x, y, ts) {}
+
+    _drawCrumble(ctx, x, y, ts) {
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(x, y, ts, ts);
+      ctx.strokeStyle = '#5c2d0a';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 2]);
+      ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
+      ctx.setLineDash([]);
+    }
+
+    _drawSpring(ctx, x, y, ts) {
+      ctx.fillStyle = '#1e1e2e';
+      ctx.fillRect(x, y, ts, ts);
+      ctx.fillStyle = '#f7a27a';
+      const cx = x + ts / 2, bot = y + ts, top = y + ts * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(cx - ts * 0.35, bot);
+      ctx.lineTo(cx + ts * 0.35, bot);
+      ctx.lineTo(cx + ts * 0.2, top);
+      ctx.lineTo(cx - ts * 0.2, top);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(cx - ts * 0.25, top - ts * 0.1, ts * 0.5, ts * 0.1);
+    }
+
+    _drawSaw(ctx, x, y, ts) {
+      const t = performance.now() / 300;
+      const cx = x + ts / 2, cy = y + ts / 2, r = ts * 0.42;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t);
+      ctx.fillStyle = '#c0c0c0';
+      const teeth = 8;
+      ctx.beginPath();
+      for (let i = 0; i < teeth; i++) {
+        const a1 = (i / teeth) * Math.PI * 2;
+        const a2 = ((i + 0.5) / teeth) * Math.PI * 2;
+        ctx.lineTo(Math.cos(a1) * r, Math.sin(a1) * r);
+        ctx.lineTo(Math.cos(a2) * r * 0.65, Math.sin(a2) * r * 0.65);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    _drawWalker(ctx, x, y, ts) {
+      ctx.fillStyle = '#a855f7';
+      const bx = x + ts * 0.15, by = y + ts * 0.1, bw = ts * 0.7, bh = ts * 0.6;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(bx + bw * 0.15, by + bh * 0.2, bw * 0.25, bh * 0.3);
+      ctx.fillRect(bx + bw * 0.6,  by + bh * 0.2, bw * 0.25, bh * 0.3);
+      ctx.fillStyle = '#1e0a2e';
+      ctx.fillRect(bx + bw * 0.2,  by + bh * 0.25, bw * 0.15, bh * 0.2);
+      ctx.fillRect(bx + bw * 0.65, by + bh * 0.25, bw * 0.15, bh * 0.2);
+      ctx.fillStyle = '#a855f7';
+      ctx.fillRect(bx + bw * 0.1,  by + bh, bw * 0.2, bh * 0.35);
+      ctx.fillRect(bx + bw * 0.7,  by + bh, bw * 0.2, bh * 0.35);
+    }
   }
 
   // ================================================================
@@ -861,6 +955,8 @@
   let offsetX           = LABEL_LEFT;
   let offsetY           = LABEL_TOP;
   let currentGrid       = null;
+  let baseGrid          = null;   // original grid before hard mode
+  let hardModeActive    = false;
   let activeBottlenecks      = [];
   let activeSolutionPath     = [];
   let activeDesignSuggestions = [];
@@ -869,6 +965,151 @@
   let showDesignTips         = false;
   let isLoading              = false;
   let pendingFile            = null;
+
+  // Hard-mode runtime entities
+  let walkers    = [];   // { x, y, vx, w, h, dir }
+  let crumbles   = [];   // { row, col, timer, falling }
+
+  function initHardModeEntities(grid) {
+    walkers  = [];
+    crumbles = [];
+    if (!grid) return;
+    const ts = TILE_SIZE;
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        const t = grid[r][c];
+        if (t === 'W') {
+          walkers.push({ x: c * ts, y: r * ts, vx: 60, w: ts * 0.7, h: ts * 0.95 });
+        }
+        if (t === 'B') {
+          crumbles.push({ row: r, col: c, timer: -1, falling: false, fallY: r * ts, fallVy: 0 });
+        }
+      }
+    }
+  }
+
+  function updateWalkers(dt) {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const w of walkers) {
+      if (!w.vy) w.vy = 0;
+      // horizontal movement
+      w.x += w.vx * dt;
+      const ahead = w.vx > 0 ? Math.floor((w.x + w.w) / ts) : Math.floor(w.x / ts);
+      const feetRow = Math.floor((w.y + w.h) / ts);
+      if (level.isSolid(feetRow, ahead)) { w.vx = -w.vx; w.x += w.vx * dt * 2; }
+
+      // gravity
+      w.vy = Math.min((w.vy || 0) + GRAVITY * dt, MAX_FALL);
+      w.y += w.vy * dt;
+      const newFeetRow = Math.floor((w.y + w.h) / ts);
+      const midCol     = Math.floor((w.x + w.w / 2) / ts);
+      if (w.vy > 0 && level.isSolid(newFeetRow, midCol)) {
+        w.y  = newFeetRow * ts - w.h;
+        w.vy = 0;
+      }
+      // reverse at platform edges
+      const groundCol  = Math.floor((w.x + w.w / 2 + (w.vx > 0 ? w.w * 0.5 : -w.w * 0.5)) / ts);
+      const groundRow  = Math.floor((w.y + w.h + 1) / ts);
+      if (!level.isSolid(groundRow, groundCol)) w.vx = -w.vx;
+
+      // kill player on contact
+      if (player && state === 'playing') {
+        if (player.x < w.x + w.w && player.x + player.w > w.x &&
+            player.y < w.y + w.h && player.y + player.h > w.y) {
+          state = 'dead';
+        }
+      }
+    }
+  }
+
+  function updateCrumbles(dt) {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const c of crumbles) {
+      if (c.falling) {
+        c.fallVy += GRAVITY * dt;
+        c.fallY  += c.fallVy * dt;
+        continue;
+      }
+      // check if player is standing on this tile
+      if (player && state === 'playing') {
+        const pr = Math.floor((player.y + player.h) / ts);
+        const pc0 = Math.floor(player.x / ts);
+        const pc1 = Math.floor((player.x + player.w - 1) / ts);
+        if (pr === c.row && pc0 <= c.col && pc1 >= c.col) {
+          if (c.timer < 0) c.timer = 0;
+        }
+      }
+      if (c.timer >= 0) {
+        c.timer += dt;
+        if (c.timer > 0.55) {
+          // start falling, remove from grid
+          level.grid[c.row][c.col] = 0;
+          c.falling = true;
+          c.fallY   = c.row * ts;
+          c.fallVy  = 0;
+        }
+      }
+    }
+  }
+
+  function drawWalkers() {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const w of walkers) {
+      ctx.save();
+      if (w.vx < 0) {
+        ctx.translate(offsetX + w.x + w.w, offsetY + w.y);
+        ctx.scale(-1, 1);
+        level._drawWalker(ctx, 0, 0, ts);
+      } else {
+        level._drawWalker(ctx, offsetX + w.x, offsetY + w.y, ts);
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawCrumbles() {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const c of crumbles) {
+      if (!c.falling) continue;
+      const x = offsetX + c.col * ts;
+      const y = offsetY + c.fallY;
+      if (y > canvas.height + ts) continue;
+      level._drawCrumble(ctx, x, y, ts);
+    }
+  }
+
+  function checkSpringBoost() {
+    if (!player || !level || state !== 'playing') return;
+    const ts = level.tileSize;
+    const r  = Math.floor((player.y + player.h) / ts);
+    const c0 = Math.floor(player.x / ts);
+    const c1 = Math.floor((player.x + player.w - 1) / ts);
+    for (let c = c0; c <= c1; c++) {
+      if (level.getTile(r, c) === 'J' && player.onGround) {
+        player.vy = -JUMP_STRENGTH * 1.9;
+        player.onGround = false;
+        return;
+      }
+    }
+  }
+
+  function checkSawDeath() {
+    if (!player || !level || state !== 'playing') return;
+    const ts = level.tileSize;
+    const r0 = Math.floor(player.y / ts);
+    const r1 = Math.floor((player.y + player.h - 1) / ts);
+    const c0 = Math.floor(player.x / ts);
+    const c1 = Math.floor((player.x + player.w - 1) / ts);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (level.getTile(r, c) === 'Z') { state = 'dead'; return; }
+      }
+    }
+  }
 
   function setLoading(on) {
     isLoading = on;
@@ -881,28 +1122,40 @@
     const ts = level.tileSize;
     player = new Entity(spawnX, spawnY, ts * 0.75, ts * 0.9);
     state  = 'playing';
+    if (hardModeActive && currentGrid) {
+      // restore crumbled tiles and reset walkers
+      level.grid = currentGrid.map(r => r.slice());
+      initHardModeEntities(currentGrid);
+    }
   }
 
-  function loadGeneratedLevel(jsonGrid) {
+  function loadGeneratedLevel(jsonGrid, isHard = false) {
     const ts   = TILE_SIZE;
-    currentGrid = jsonGrid;
+    currentGrid = jsonGrid.map(r => r.slice());
+    if (!isHard) baseGrid = currentGrid.map(r => r.slice());
     activeBottlenecks       = [];
     activeSolutionPath      = [];
     activeDesignSuggestions = [];
     activeSuggestedSpawn    = null;
     activeSuggestedGoal     = null;
-    level   = new Level(jsonGrid, ts);
+    hardModeActive          = isHard;
+    level   = new Level(currentGrid.map(r => r.slice()), ts);
     state   = 'playing';
     offsetX = LABEL_LEFT;
     offsetY = LABEL_TOP;
+
+    initHardModeEntities(isHard ? currentGrid : null);
 
     const spawn = level.findTile('P');
     spawnX = spawn ? spawn.col * ts : ts;
     spawnY = spawn ? spawn.row * ts : ts;
 
     spawnPlayer();
-    document.getElementById('evaluateBtn').disabled = false;
+    document.getElementById('evaluateBtn').disabled    = false;
     document.getElementById('updatePhysicsBtn').disabled = false;
+    document.getElementById('hardModeBtn').disabled    = false;
+    document.getElementById('hardModeBtn').classList.toggle('active', isHard);
+    document.getElementById('hardModeBtn').textContent = isHard ? '💀 EXIT HARD MODE' : '💀 HARD MODE';
     const _tb = document.getElementById('tipsBtn');
     _tb.disabled    = true;
     _tb.textContent = '💡 SHOW DESIGN TIPS';
@@ -1057,6 +1310,12 @@
   function update(dt) {
     if (isLoading || state !== 'playing' || !player || !level) return;
     player.update(dt, level);
+    checkSpringBoost();
+    checkSawDeath();
+    if (hardModeActive) {
+      updateWalkers(dt);
+      updateCrumbles(dt);
+    }
 
     if (player.y > level.height + 200) {
       state = 'dead';
@@ -1137,6 +1396,7 @@
     }
 
     level.draw(ctx, -offsetX, -offsetY, activeBottlenecks, activeSolutionPath);
+    if (hardModeActive) { drawWalkers(); drawCrumbles(); }
     if (player) player.draw(ctx, -offsetX, -offsetY);
     drawDesignSuggestions(activeDesignSuggestions);
 
@@ -1593,6 +1853,33 @@
   }
 
   document.getElementById('evaluateBtn').addEventListener('click', runEvaluation);
+
+  document.getElementById('hardModeBtn').addEventListener('click', async () => {
+    if (!currentGrid) return;
+    if (hardModeActive) {
+      // revert to base grid
+      loadGeneratedLevel(baseGrid, false);
+      return;
+    }
+    baseGrid = currentGrid.map(r => r.slice());
+    const btn = document.getElementById('hardModeBtn');
+    btn.disabled = true;
+    btn.textContent = '💀 GENERATING…';
+    try {
+      const res  = await fetch('/api/levels/hard-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grid: currentGrid, width: currentGrid[0].length, height: currentGrid.length }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Hard mode failed');
+      loadGeneratedLevel(json.level.data, true);
+    } catch (err) {
+      alert('✗ ' + err.message);
+      btn.disabled = false;
+      btn.textContent = '💀 HARD MODE';
+    }
+  });
 
   document.getElementById('updatePhysicsBtn').addEventListener('click', () => {
     syncPhysics();

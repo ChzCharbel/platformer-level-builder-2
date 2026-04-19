@@ -764,8 +764,8 @@ export default function Play() {
         const nextCol = wCol + (w.vx > 0 ? 1 : -1)
         const floorRow = w.row + 1
         const wallTile = getTile(grid, w.row, nextCol)
-        const floorAhead = isSolid(getTile(grid, floorRow, nextCol))
-        if ((wallTile && wallTile !== '' && isSolid(wallTile)) || !floorAhead || wCol < w.minCol || wCol > w.maxCol) {
+        const floorAhead = isSolid(grid, floorRow, nextCol)
+        if ((wallTile && wallTile !== '' && isSolid(grid, w.row, nextCol)) || !floorAhead || wCol < w.minCol || wCol > w.maxCol) {
           w.vx = -w.vx
         }
         // Kill player if overlapping walker
@@ -1297,8 +1297,8 @@ export default function Play() {
         if (t === 'W') {
           // Find platform extent for patrol bounds
           let minCol = c, maxCol = c
-          while (minCol > 0 && isSolid(data.level.data[r + 1]?.[minCol - 1])) minCol--
-          while (maxCol < (data.level.data[r]?.length ?? 0) - 1 && isSolid(data.level.data[r + 1]?.[maxCol + 1])) maxCol++
+          while (minCol > 0 && isSolid(data.level.data, r + 1, minCol - 1)) minCol--
+          while (maxCol < (data.level.data[r]?.length ?? 0) - 1 && isSolid(data.level.data, r + 1, maxCol + 1)) maxCol++
           walkersRef.current.set(`${r},${c}`, {
             row: r, col: c, x: c * TILE, vx: 60, minCol, maxCol, alive: true
           })
