@@ -81,7 +81,7 @@ app.post('/verify', async (req, res) => {
   res.end();
 });
 
-// POST /api/levels/hard-mode — generate hard-mode remix via Kimi K2 agent, deterministic fallback
+// POST /api/levels/hard-mode — generate hard-mode remix via K2 Think V2 agent, deterministic fallback
 app.post('/api/levels/hard-mode', async (req, res) => {
   const { grid, width, height, playerStart, goal, deathPositions, telemetry, difficulty } = req.body;
   if (!Array.isArray(grid) || grid.length === 0) {
@@ -92,20 +92,27 @@ app.post('/api/levels/hard-mode', async (req, res) => {
   const tel = telemetry || {};
   const diff = difficulty || 'medium';
 
-  // Try Gemini hard-mode agent first
-  const hasKey = !!process.env.GEMINI_API_KEY;
+  console.log(`[hard-mode] request — difficulty=${diff} grid=${levelInput.width}x${levelInput.height} deaths=${tel.deaths ?? 0} deathPoints=${(tel.deathPoints || []).length}`);
+
+  // Try Anthropic hard-mode agent first
+  const hasKey = !!process.env.ANTHROPIC_API_KEY;
+  console.log(`[hard-mode] ANTHROPIC_API_KEY present=${hasKey}`);
   if (hasKey) {
     try {
+      console.log('[hard-mode] invoking Anthropic agent…');
       const result = await hardModeAgent.invoke({ level: levelInput, telemetry: tel, difficulty: diff });
+      console.log(`[hard-mode] K2 agent OK — difficulty_estimate=${result.difficulty_estimate} changes=${result.changes?.length}`);
       return res.json(result);
     } catch (err) {
-      console.warn('[hard-mode] Agent failed, falling back to deterministic:', err.message);
+      console.warn('[hard-mode] K2 agent failed, falling back to deterministic:', err.message);
     }
   }
 
   // Deterministic fallback
+  console.log('[hard-mode] using deterministic fallback');
   try {
     const result = await generateHardMode({ grid, width, height, playerStart, goal, deathPositions: deathPositions || [], telemetry: tel });
+    console.log(`[hard-mode] deterministic OK — changes=${result.changes?.length}`);
     res.json(result);
   } catch (err) {
     console.error('[hard-mode] Deterministic fallback also failed:', err.message);

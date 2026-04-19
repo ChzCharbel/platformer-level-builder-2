@@ -2,134 +2,101 @@
 
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { z }                  = require('zod');
+const Anthropic = require('@anthropic-ai/sdk');
+const { z }     = require('zod');
 
-const MODEL = process.env.LLM_MODEL || 'gemini-2.0-flash';
-
-// ---------------------------------------------------------------------------
-// Zod schema for structured output
-// ---------------------------------------------------------------------------
-const ChangeSchema = z.object({
-  id:          z.string(),
-  type:        z.string(),
-  description: z.string(),
-  position:    z.object({ row: z.number().int(), col: z.number().int() }).optional(),
-});
-
-const HardModeOutputSchema = z.object({
-  new_tiles: z.array(z.object({
-    row:  z.number().int(),
-    col:  z.number().int(),
-    tile: z.union([z.number(), z.string()]),
-  })),
-  changes:             z.array(ChangeSchema),
-  difficulty_estimate: z.number().min(1).max(10),
-});
+const MODEL = process.env.LLM_MODEL || 'claude-haiku-4-5-20251001';
 
 // Tiles the agent must never overwrite
 const PROTECTED = new Set(['P', 'G']);
 
 // ---------------------------------------------------------------------------
-// System prompt (parameterized by difficulty)
+// Compact output schema — patches only, no full grid in response
 // ---------------------------------------------------------------------------
-const DIFFICULTY_INSTRUCTIONS = {
-  light: `Target a MILD difficulty increase (1.3x). Add 2-3 changes total.
-- Prefer walkers on wide platforms or a couple extra spikes at death hotspots.
-- Do NOT add saws, nightmare hazard chains, or crumble-only paths.
-- difficulty_estimate should be 4-6.`,
-  medium: `Target a MODERATE difficulty increase (2x). Add 4-6 changes total.
-- Mix walkers, crumble platforms, and a saw or two.
-- Use telemetry to target weak spots.
-- difficulty_estimate should be 6-8.`,
-  brutal: `Target a BRUTAL difficulty increase (3x+). Add 7-10 changes total.
-- Add saws at chokepoints, walkers on every major platform, crumble tiles on key paths, flying enemies over gaps.
-- Make the player use every skill they have.
-- difficulty_estimate should be 8-10.`,
-};
+const HardModeOutputSchema = z.object({
+  patches: z.array(z.object({
+    r: z.number().int(),
+    c: z.number().int(),
+    t: z.string(),
+  })),
+  changes: z.array(z.object({
+    type:   z.string(),
+    r:      z.number().int(),
+    c:      z.number().int(),
+    reason: z.string(),
+  })),
+  d: z.number().min(1).max(10),
+});
 
-function buildSystemPrompt(difficulty) {
-  const diffInstr = DIFFICULTY_INSTRUCTIONS[difficulty] || DIFFICULTY_INSTRUCTIONS.medium;
-  return `You are a platformer level designer specializing in hard mode remixes.
-Given a level grid and player telemetry, return a harder remix of the level.
+// ---------------------------------------------------------------------------
+// Prompt
+// ---------------------------------------------------------------------------
+const DIFFICULTY_COUNTS = { light: '2-3', medium: '3-5', brutal: '5-7' };
+const DIFFICULTY_D      = { light: '4',   medium: '6',   brutal: '8'   };
 
-DIFFICULTY LEVEL: ${difficulty.toUpperCase()}
-${diffInstr}
+function buildPrompt(difficulty, rows, cols, gridStr, telemetrySummary) {
+  const count = DIFFICULTY_COUNTS[difficulty] || DIFFICULTY_COUNTS.medium;
+  const dEx   = DIFFICULTY_D[difficulty]      || DIFFICULTY_D.medium;
+  return `You are a platformer level designer. Add hazards to make this level harder based on player deaths.
 
-Rules:
-- Preserve spawn (P) and goal (G) locations exactly. Never place tiles on them.
-- Do not make the level unwinnable — always keep a clear path from P to G.
-- Walker (W) tiles must be placed on a row ABOVE a solid platform so they have ground to walk on. Do not place W on the floor row or floating in air.
-- Use telemetry to target the player's weaknesses:
-  - Many spike deaths in one area: add spikes or saws near those coordinates.
-  - Player rushed (low idle time): add timing-based enemies (W=walker, F=flyer).
-  - Player collected every coin: place coins in harder-to-reach spots.
-  - High death count overall: add crumble (B) platforms on key paths.
-- Available tile types to add: W (walker enemy), F (flying enemy), Z (saw), J (spring), B (crumble platform), S (spike).
-- Tile types you must NOT touch: P (spawn), G (goal).
+TILE LEGEND: 0=empty 1=solid S=spike Z=saw W=walker(enemy) B=crumble F=flyer C=coin P=spawn G=goal
+RULES: Never change P or G. W must go on an empty cell with a solid tile directly below it. No gap >4 tiles.
 
-Output JSON shape (strict):
-{
-  "new_tiles": [{ "row": <int>, "col": <int>, "tile": <string or 0> }],
-  "changes": [{ "id": <string>, "type": <string>, "description": <string>, "position": { "row": <int>, "col": <int> } }],
-  "difficulty_estimate": <number 1-10>
-}
+GRID ${rows}x${cols}:
+${gridStr}
 
-Make each change description specific and reference the telemetry. Example: "Added walker at (col 12, row 8) because player died there 3 times."`;
+PLAYER DATA: ${telemetrySummary}
+
+Add ${count} hazard tiles targeting death spots.
+
+Return ONLY a JSON object using ACTUAL row/col integers from the grid:
+{"patches":[{"r":5,"c":12,"t":"W"},{"r":3,"c":7,"t":"Z"}],"changes":[{"type":"added_enemy_walker","r":5,"c":12,"reason":"Walker blocks the path where player died twice"},{"type":"added_saw","r":3,"c":7,"reason":"Saw forces player to time the jump"}],"d":${dEx}}`;
 }
 
 // ---------------------------------------------------------------------------
-// Build a concise telemetry summary for the prompt
+// Telemetry summary — compact
 // ---------------------------------------------------------------------------
 function summarizeTelemetry(telemetry) {
   const t = telemetry || {};
   const deathsByZone = {};
   for (const dp of (t.deathPoints || [])) {
-    const key = `col ${dp.col}, row ${dp.row}`;
+    const key = `(${dp.col},${dp.row})`;
     deathsByZone[key] = (deathsByZone[key] || 0) + 1;
   }
   const hotspots = Object.entries(deathsByZone)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([k, v]) => `${k} (${v} death${v > 1 ? 's' : ''})`);
+    .map(([k, v]) => `${k}x${v}`);
 
-  const elapsed = t.endTime && t.startTime ? ((t.endTime - t.startTime) / 1000).toFixed(1) : 'unknown';
-
-  return [
-    `Total deaths: ${t.deaths || 0}`,
-    `Death hotspots: ${hotspots.length ? hotspots.join(', ') : 'none'}`,
-    `Jumps: ${t.jumps || 0}`,
-    `Coins collected: ${t.coinsCollected || 0} / ${t.coinsTotal || 0}`,
-    `Idle time: ${(t.idleTime || 0).toFixed(1)}s`,
-    `Time played: ${elapsed}s`,
-    `Reached goal: ${t.reachedGoal ? 'yes' : 'no'}`,
-    `Path samples (col,row): ${(t.pathSampled || []).slice(0, 20).map(p => `(${p.col},${p.row})`).join(' ')}`,
-  ].join('\n');
+  const elapsed = t.endTime && t.startTime ? ((t.endTime - t.startTime) / 1000).toFixed(1) : '?';
+  return `deaths=${t.deaths||0} hotspots=${hotspots.join(' ')||'none'} jumps=${t.jumps||0} coins=${t.coinsCollected||0}/${t.coinsTotal||0} time=${elapsed}s goal=${t.reachedGoal?'yes':'no'}`;
 }
 
 // ---------------------------------------------------------------------------
-// Invoke Gemini with retries
+// Invoke Anthropic with retries
 // ---------------------------------------------------------------------------
-async function invokeWithRetry(model, systemPrompt, userPrompt, retries = 2) {
+async function invokeWithRetry(client, prompt, retries = 2) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const geminiModel = model.getGenerativeModel({
+      const message = await client.messages.create({
         model: MODEL,
-        systemInstruction: systemPrompt,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 4096,
-          responseMimeType: 'application/json',
-        },
+        max_tokens: 1024,
+        messages:   [{ role: 'user', content: prompt }],
       });
-
-      const result = await geminiModel.generateContent(userPrompt);
-      const text   = result.response.text();
-      const parsed = JSON.parse(text);
+      const raw = message.content[0]?.text ?? '';
+      console.log(`[hardModeAgent] raw length=${raw.length} preview="${raw.slice(0, 120).replace(/\n/g, ' ')}"`);
+      const start = raw.indexOf('{');
+      const end   = raw.lastIndexOf('}');
+      if (start === -1 || end === -1) throw new Error('No JSON object found in response');
+      const parsed = JSON.parse(raw.slice(start, end + 1));
       return HardModeOutputSchema.parse(parsed);
     } catch (err) {
       lastErr = err;
+      if (err.status === 429 || err.message?.includes('rate') || err.message?.includes('quota')) {
+        console.warn('[hardModeAgent] rate-limit hit — aborting retries');
+        break;
+      }
       if (attempt < retries) {
         console.warn(`[hardModeAgent] attempt ${attempt + 1} failed: ${err.message} — retrying`);
       }
@@ -142,36 +109,38 @@ async function invokeWithRetry(model, systemPrompt, userPrompt, retries = 2) {
 // Public API
 // ---------------------------------------------------------------------------
 async function invoke({ level, telemetry, difficulty = 'medium' }) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('No GEMINI_API_KEY set');
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set in environment.');
 
-  const genAI = new GoogleGenerativeAI(key);
+  const client = new Anthropic.default({ apiKey });
+  const rows   = level.height || level.data.length;
+  const cols   = level.width  || (level.data[0]?.length ?? 0);
+  const prompt = buildPrompt(difficulty, rows, cols, JSON.stringify(level.data), summarizeTelemetry(telemetry));
 
-  const telemetrySummary = summarizeTelemetry(telemetry);
-  const gridStr          = JSON.stringify(level.data);
-  const userPrompt       = `Level grid (${level.height || level.data.length} rows x ${level.width || (level.data[0]?.length ?? 0)} cols):\n${gridStr}\n\nPlayer telemetry:\n${telemetrySummary}\n\nRemix this level to be harder, targeting the weaknesses above.`;
+  const output = await invokeWithRetry(client, prompt, 2);
 
-  const output = await invokeWithRetry(genAI, buildSystemPrompt(difficulty), userPrompt, 2);
-
-  // Apply new tiles to a cloned grid
+  // Apply patches to a cloned grid, respecting PROTECTED tiles
   const newGrid = level.data.map(r => r.slice());
-  for (const { row, col, tile } of output.new_tiles) {
-    if (row < 0 || row >= newGrid.length) continue;
-    if (col < 0 || col >= (newGrid[0]?.length ?? 0)) continue;
-    if (PROTECTED.has(String(newGrid[row][col]))) continue;
-    newGrid[row][col] = tile;
+  for (const { r, c, t } of output.patches) {
+    if (r < 0 || r >= newGrid.length || c < 0 || c >= (newGrid[0]?.length ?? 0)) continue;
+    if (PROTECTED.has(String(newGrid[r][c]))) continue;
+    newGrid[r][c] = t;
   }
 
   return {
     level: {
       data:        newGrid,
-      width:       level.width  || (newGrid[0]?.length ?? 0),
-      height:      level.height || newGrid.length,
+      width:       cols,
+      height:      rows,
       playerStart: level.playerStart || null,
       goal:        level.goal        || null,
     },
-    changes:             output.changes,
-    difficulty_estimate: output.difficulty_estimate,
+    changes: output.changes.map(ch => ({
+      type:     ch.type,
+      location: { x: ch.c, y: ch.r },
+      reason:   ch.reason,
+    })),
+    difficulty_estimate: output.d,
   };
 }
 

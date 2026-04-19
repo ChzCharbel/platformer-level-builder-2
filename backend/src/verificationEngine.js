@@ -268,22 +268,23 @@ async function* streamK2Verification(prompt) {
 
   const client = new OpenAI({ apiKey, baseURL: K2_BASE_URL });
 
-  const stream = await client.chat.completions.create({
-    model: K2_MODEL,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a JSON-only responder. Your entire response must be a single valid JSON object. Do not write any explanation or text outside the JSON object.',
-      },
-      { role: 'user', content: prompt },
-    ],
-    stream: true,
-    temperature: 0.1,
-    max_tokens: 4000,
-    extra_body: {
-      chat_template_kwargs: { reasoning_effort: 'high' },
+  const stream = await client.chat.completions.create(
+    {
+      model: K2_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a JSON-only responder. Your entire response must be a single valid JSON object. Do not write any explanation or text outside the JSON object.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      stream:      true,
+      temperature: 0.1,
+      max_tokens:  4000,
+      extra_body:  { chat_template_kwargs: { reasoning_effort: 'high' } },
     },
-  });
+    { timeout: 25000 },
+  );
 
   let rawBuffer = '';
   let inThink   = false;
