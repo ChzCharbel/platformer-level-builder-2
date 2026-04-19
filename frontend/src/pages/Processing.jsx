@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import ThemeToggle from '../components/bits/ThemeToggle'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 const MESSAGES = [
   'Reading your sketch...',
@@ -124,23 +124,39 @@ export default function Processing() {
         } catch {
           throw new Error('Cannot reach the backend. The server may be starting up — please try again in a moment.')
         }
-        const text = await res.text()
-        if (!text) throw new Error('Backend returned an empty response. Check that the server is running.')
-        let json
-        try { json = JSON.parse(text) } catch {
-          throw new Error('Backend returned invalid JSON. Check the server logs.')
-        }
-        if (!res.ok) throw new Error(json.error || 'Upload failed')
-        if (!json.data || !Array.isArray(json.data)) {
-          throw new Error('The AI could not read a level from that image. Try a clearer photo.')
-        }
-        if (json.data.flat().every((t) => t === 0)) {
-          throw new Error('The level appears to be empty. Make sure your sketch has clear symbols.')
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Upload failed' }))
+          throw new Error(err.error || 'Upload failed')
         }
 
-        const id = Math.random().toString(36).slice(2, 8)
-        localStorage.setItem(`level_${id}`, JSON.stringify(json))
-        navigate(`/play/${id}`, { replace: true })
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buf = '', curEvent = null
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop()
+          for (const line of lines) {
+            if (line.startsWith('event: ')) { curEvent = line.slice(7).trim(); continue }
+            if (line.startsWith('data: ') && curEvent) {
+              const parsed = JSON.parse(line.slice(6))
+              if (curEvent === 'result') {
+                if (!parsed.data || !Array.isArray(parsed.data))
+                  throw new Error('The AI could not read a level from that image. Try a clearer photo.')
+                if (parsed.data.flat().every((t) => t === 0))
+                  throw new Error('The level appears to be empty. Make sure your sketch has clear symbols.')
+                const id = Math.random().toString(36).slice(2, 8)
+                localStorage.setItem(`level_${id}`, JSON.stringify(parsed))
+                navigate(`/play/${id}`, { replace: true })
+                return
+              }
+              if (curEvent === 'error') throw new Error(parsed.error || 'Processing failed')
+              curEvent = null
+            }
+          }
+        }
       } catch (err) {
         setUploadError(err.message)
       }

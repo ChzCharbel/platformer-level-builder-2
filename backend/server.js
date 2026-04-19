@@ -23,18 +23,29 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '2mb' }));
 
-// POST /upload — convert image → level JSON
+// POST /upload — convert image → level JSON (SSE to survive long Gemini calls)
 app.post('/upload', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image uploaded.' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const ping = setInterval(() => res.write(': ping\n\n'), 15000);
 
   try {
     const level = await processLevelImage(req.file.buffer);
     fs.writeFileSync(path.join(__dirname, 'level_output.json'), JSON.stringify(level, null, 2));
-    res.json(level);
+    clearInterval(ping);
+    send('result', level);
   } catch (err) {
+    clearInterval(ping);
     console.error('Conversion error:', err.message);
-    res.status(500).json({ error: err.message });
+    send('error', { error: err.message });
   }
+  res.end();
 });
 
 // POST /verify — stream K2 reasoning trace + final solvability verdict via SSE
