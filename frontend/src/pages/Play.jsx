@@ -2160,7 +2160,7 @@ export default function Play() {
                     )}
 
                     <div className="flex flex-col gap-3 mt-4">
-                      <button                      <button
+                      <button
                         onClick={() => {
                           setGameWon(false)
                           setRageQuit(false)
