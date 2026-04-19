@@ -12,12 +12,9 @@ const app    = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const allowed = process.env.FRONTEND_URL;
-  res.setHeader('Access-Control-Allow-Origin', (!allowed || origin === allowed) ? (origin || '*') : allowed);
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Headers', '*');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
