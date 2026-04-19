@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload as UploadIcon, Camera, X, AlertCircle } from 'lucide-react'
+import { Upload as UploadIcon, Camera, X, AlertCircle, Gamepad2, ChevronRight } from 'lucide-react'
 import SplitText from '../components/bits/SplitText'
 import Aurora from '../components/bits/Aurora'
 import StarBorder from '../components/bits/StarBorder'
+import { DEMO_LEVELS } from '../data/demoLevels'
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
 
@@ -151,6 +152,7 @@ export default function Upload() {
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState(null)
   const [cameraOpen, setCameraOpen] = useState(false)
+  const [demoPicker, setDemoPicker] = useState(false)
 
   const validateAndSet = useCallback((f) => {
     setError(null)
@@ -195,28 +197,8 @@ export default function Upload() {
     navigate('/processing', { state: { file, fileName: file.name } })
   }
 
-  const handleDemo = () => {
-    const E = '', T = 'T', S = 'S', P = 'P', G = 'G', C = 'C'
-    const demoLevel = {
-      data: [
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,T,T,G,E],
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,T,T,T,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,E,C,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,T,T,T,E,E,E,E,T,T,E,E,E,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,E,E,C,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,T,T,T,T,E,E,E,E,E,T,T,T,E,E,E,E,E,E,E,E,E,E],
-        [E,E,E,E,C,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [E,E,T,T,T,T,T,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [P,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-        [T,T,T,T,S,T,T,T,S,T,T,S,S,T,T,T,S,T,T,T,T,S,T,T,T,T,T,T,T,T],
-        [T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T,T],
-      ]
-    }
-    localStorage.setItem('level_demo', JSON.stringify(demoLevel))
+  const handleDemo = (level) => {
+    localStorage.setItem('level_demo', JSON.stringify({ data: level.data }))
     navigate('/play/demo')
   }
 
@@ -233,6 +215,69 @@ export default function Upload() {
           onCapture={handleCameraCapture}
           onClose={() => setCameraOpen(false)}
         />
+      )}
+    </AnimatePresence>
+
+    {/* Demo picker modal */}
+    <AnimatePresence>
+      {demoPicker && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setDemoPicker(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-lg bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-stone-200 overflow-hidden"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-3">
+              <div>
+                <h2 className="text-lg font-black text-stone-800">Demo Levels</h2>
+                <p className="text-xs text-stone-400 mt-0.5">Pick one and start playing instantly</p>
+              </div>
+              <button
+                onClick={() => setDemoPicker(false)}
+                className="p-2 rounded-xl hover:bg-stone-100 transition-colors text-stone-400 hover:text-stone-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Level list */}
+            <div className="px-4 pb-5 space-y-2">
+              {DEMO_LEVELS.map((level, i) => (
+                <motion.button
+                  key={level.id}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  onClick={() => handleDemo(level)}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-stone-50 hover:bg-orange-50
+                             border border-stone-200 hover:border-orange-300 transition-all text-left group"
+                >
+                  <span className="text-3xl leading-none">{level.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-stone-800 text-sm">{level.name}</span>
+                      <span className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">
+                        {'★'.repeat(level.difficulty)}{'☆'.repeat(5 - level.difficulty)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-400 mt-0.5 leading-snug truncate">{level.description}</p>
+                  </div>
+                  <ChevronRight size={16} className="text-stone-300 group-hover:text-orange-400 shrink-0 transition-colors" />
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
       )}
     </AnimatePresence>
     <div className="relative min-h-dvh flex flex-col items-center justify-center px-4 py-12 overflow-hidden">
@@ -417,7 +462,7 @@ export default function Upload() {
               </motion.div>
             )}
           </AnimatePresence>
-        {/* Demo button */}
+        {/* Demo picker trigger */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -425,10 +470,11 @@ export default function Upload() {
           className="mt-6 text-center"
         >
           <button
-            onClick={handleDemo}
-            className="text-sm text-stone-400 hover:text-orange-500 underline underline-offset-4 transition-colors"
+            onClick={() => setDemoPicker(true)}
+            className="inline-flex items-center gap-2 text-sm text-stone-400 hover:text-orange-500 transition-colors"
           >
-            🎮 Try a demo level instead
+            <Gamepad2 size={15} />
+            Browse demo levels
           </button>
         </motion.div>
         </motion.div>

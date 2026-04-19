@@ -6,6 +6,7 @@ import { Share2, RefreshCw, Home, Star, ChevronRight, ChevronLeft, Brain, CheckC
 // ──────────────────────────────────────────────
 // CONSTANTS
 // ──────────────────────────────────────────────
+const API            = import.meta.env.VITE_API_URL || ''
 const TILE_SIZE      = 32
 const COYOTE_MS      = 100
 const JUMP_BUFFER_MS = 120
@@ -801,6 +802,7 @@ export default function Play() {
       g.pvx = 0; g.pvy = 0
       g.onGround = false
       g.state = 'playing'
+      crumbleRef.current.clear()
     }
 
     let wasSim = false
@@ -983,6 +985,7 @@ export default function Play() {
           telemetryRef.current.deaths++
           telemetryRef.current.deathPoints.push({ col: wCol, row: w.row })
           shakeRef.current = 8
+          setDeathCount(d => d + 1)
           if (simulateModeRef.current) recordSimDeath(wCol, w.row)
           g.state = 'dead'; setTimeout(respawn, 400); return
         }
@@ -1455,7 +1458,7 @@ export default function Play() {
 
     async function runVerify() {
       try {
-        const res = await fetch('/verify', {
+        const res = await fetch(`${API}/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ grid: levelData.data, physicsParams: verifyPhysRef.current, deathPositions: simDeathsRef.current }),
@@ -1633,7 +1636,7 @@ export default function Play() {
     setHardModeError(null)
     const sourceLevel = originalLevelDataRef.current || levelData
     try {
-      const res = await fetch('/api/levels/hard-mode', {
+      const res = await fetch(`${API}/api/levels/hard-mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

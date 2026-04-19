@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const OpenAI = require('openai');
 
 const K2_BASE_URL = process.env.K2_API_BASE_URL || 'https://api.k2think.ai/v1';

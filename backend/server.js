@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const multer  = require('multer');
 const path    = require('path');
@@ -11,8 +11,14 @@ const hardModeAgent               = require('./src/agents/hardModeAgent');
 const app    = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname)));
 
 // POST /upload — convert image → level JSON
 app.post('/upload', upload.single('image'), async (req, res) => {
@@ -75,8 +81,8 @@ app.post('/api/levels/hard-mode', async (req, res) => {
   const tel = telemetry || {};
   const diff = difficulty || 'medium';
 
-  // Try Kimi K2 agent first
-  const hasKey = !!(process.env.LLM_API_KEY || process.env.K2_API_KEY);
+  // Try Gemini hard-mode agent first
+  const hasKey = !!process.env.GEMINI_API_KEY;
   if (hasKey) {
     try {
       const result = await hardModeAgent.invoke({ level: levelInput, telemetry: tel, difficulty: diff });

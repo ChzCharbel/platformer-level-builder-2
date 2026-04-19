@@ -1,10 +1,14 @@
 'use strict';
 
-const { ChatOpenAI } = require('@langchain/openai');
-const { z }          = require('zod');
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { z }                  = require('zod');
+
+const MODEL = process.env.LLM_MODEL || 'gemini-2.0-flash';
 
 // ---------------------------------------------------------------------------
-// Zod schema for the structured output from Kimi K2
+// Zod schema for structured output
 // ---------------------------------------------------------------------------
 const ChangeSchema = z.object({
   id:          z.string(),
@@ -63,7 +67,6 @@ Rules:
   - High death count overall: add crumble (B) platforms on key paths.
 - Available tile types to add: W (walker enemy), F (flying enemy), Z (saw), J (spring), B (crumble platform), S (spike).
 - Tile types you must NOT touch: P (spawn), G (goal).
-- Return ONLY valid JSON, no prose, no markdown code fences.
 
 Output JSON shape (strict):
 {
@@ -72,18 +75,7 @@ Output JSON shape (strict):
   "difficulty_estimate": <number 1-10>
 }
 
-Make each change description specific and reference the telemetry. Example: "Added walker at (col 12, row 8) because player died there 3 times." Do not use em dashes in descriptions.`;
-}
-
-// ---------------------------------------------------------------------------
-// Strip prose/code-fence wrappers from model output before JSON.parse
-// ---------------------------------------------------------------------------
-function stripToJson(raw) {
-  const stripped = raw.replace(/^```[a-z]*\n?/im, '').replace(/```\s*$/m, '').trim();
-  const start = stripped.indexOf('{');
-  const end   = stripped.lastIndexOf('}');
-  if (start === -1 || end === -1) throw new Error('No JSON object found in model output');
-  return stripped.slice(start, end + 1);
+Make each change description specific and reference the telemetry. Example: "Added walker at (col 12, row 8) because player died there 3 times."`;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,18 +108,25 @@ function summarizeTelemetry(telemetry) {
 }
 
 // ---------------------------------------------------------------------------
-// Invoke with up to 2 retries, stripping fences and validating schema each time
+// Invoke Gemini with retries
 // ---------------------------------------------------------------------------
-async function invokeWithRetry(model, messages, retries = 2) {
+async function invokeWithRetry(model, systemPrompt, userPrompt, retries = 2) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      // withStructuredOutput may not be supported by all OpenAI-compat endpoints.
-      // Use raw invoke + manual parse for maximum compatibility.
-      const result = await model.invoke(messages);
-      const raw    = typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
-      const jsonStr = stripToJson(raw);
-      const parsed  = JSON.parse(jsonStr);
+      const geminiModel = model.getGenerativeModel({
+        model: MODEL,
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const result = await geminiModel.generateContent(userPrompt);
+      const text   = result.response.text();
+      const parsed = JSON.parse(text);
       return HardModeOutputSchema.parse(parsed);
     } catch (err) {
       lastErr = err;
@@ -143,28 +142,16 @@ async function invokeWithRetry(model, messages, retries = 2) {
 // Public API
 // ---------------------------------------------------------------------------
 async function invoke({ level, telemetry, difficulty = 'medium' }) {
-  const model = new ChatOpenAI({
-    apiKey: process.env.LLM_API_KEY || process.env.K2_API_KEY,
-    model:  process.env.LLM_MODEL   || 'kimi-k2-0905-preview',
-    configuration: {
-      baseURL: process.env.LLM_BASE_URL || 'https://api.moonshot.ai/v1',
-    },
-    temperature: 0.7,
-    maxTokens:   2048,
-  });
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('No GEMINI_API_KEY set');
+
+  const genAI = new GoogleGenerativeAI(key);
 
   const telemetrySummary = summarizeTelemetry(telemetry);
-  const gridStr = JSON.stringify(level.data);
+  const gridStr          = JSON.stringify(level.data);
+  const userPrompt       = `Level grid (${level.height || level.data.length} rows x ${level.width || (level.data[0]?.length ?? 0)} cols):\n${gridStr}\n\nPlayer telemetry:\n${telemetrySummary}\n\nRemix this level to be harder, targeting the weaknesses above.`;
 
-  const messages = [
-    { role: 'system', content: buildSystemPrompt(difficulty) },
-    {
-      role: 'user',
-      content: `Level grid (${level.height || level.data.length} rows x ${level.width || (level.data[0]?.length ?? 0)} cols):\n${gridStr}\n\nPlayer telemetry:\n${telemetrySummary}\n\nRemix this level to be harder, targeting the weaknesses above.`,
-    },
-  ];
-
-  const output = await invokeWithRetry(model, messages, 2);
+  const output = await invokeWithRetry(genAI, buildSystemPrompt(difficulty), userPrompt, 2);
 
   // Apply new tiles to a cloned grid
   const newGrid = level.data.map(r => r.slice());

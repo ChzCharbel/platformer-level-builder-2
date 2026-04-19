@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const sharp = require('sharp');
 
@@ -97,22 +97,28 @@ async function preprocessImage(imageBuffer) {
 }
 
 function extractJSON(text) {
-  const stripped = text.replace(/```(?:json)?/gi, '').replace(/```/g, '');
+  const stripped = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
 
-  const start = stripped.indexOf('{');
-  if (start === -1) throw new Error('No JSON object found in response');
+  // Fast path: responseMimeType:'application/json' returns clean JSON
+  let parsed;
+  try {
+    parsed = JSON.parse(stripped);
+  } catch {
+    // Fallback: manually find balanced braces (handles markdown-wrapped responses)
+    const start = stripped.indexOf('{');
+    if (start === -1) throw new Error('No JSON object found in response');
 
-  let depth = 0, end = -1;
-  for (let i = start; i < stripped.length; i++) {
-    if (stripped[i] === '{') depth++;
-    else if (stripped[i] === '}') {
-      depth--;
-      if (depth === 0) { end = i; break; }
+    let depth = 0, end = -1;
+    for (let i = start; i < stripped.length; i++) {
+      if (stripped[i] === '{') depth++;
+      else if (stripped[i] === '}') {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
     }
+    if (end === -1) throw new Error('Unterminated JSON object in response');
+    parsed = JSON.parse(stripped.slice(start, end + 1));
   }
-  if (end === -1) throw new Error('Unterminated JSON object in response');
-
-  const parsed = JSON.parse(stripped.slice(start, end + 1));
 
   if (!Array.isArray(parsed.platforms))
     throw new Error('"platforms" must be an array');
@@ -190,7 +196,8 @@ async function processLevelWithGemini(imageBuffer, apiKey) {
     systemInstruction: SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 65536,
+      responseMimeType: 'application/json',
     },
   });
 
