@@ -6,6 +6,7 @@ import SplitText from '../components/bits/SplitText'
 import Aurora from '../components/bits/Aurora'
 import StarBorder from '../components/bits/StarBorder'
 import { DEMO_LEVELS } from '../data/demoLevels'
+import ThemeToggle from '../components/bits/ThemeToggle'
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
 
@@ -63,14 +64,15 @@ function LegendCard({ label, hint, svg }) {
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/70 backdrop-blur-sm
-                 border border-stone-200 shadow-sm min-w-[80px] flex-1"
+      className="flex flex-col items-center gap-2 p-3 rounded-xl backdrop-blur-sm
+                 border shadow-sm min-w-[80px] flex-1"
+      style={{ background: 'var(--bg-glass)', borderColor: 'var(--border-ui)' }}
     >
       <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
         {svg}
       </svg>
-      <span className="text-xs font-bold text-stone-700 text-center leading-tight">{label}</span>
-      <span className="text-[11px] text-stone-400 text-center">Draw a {hint}</span>
+      <span className="text-xs font-bold text-center leading-tight" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      <span className="text-[11px] text-center" style={{ color: 'var(--text-muted)' }}>Draw a {hint}</span>
     </motion.div>
   )
 }
@@ -192,8 +194,6 @@ export default function Upload() {
 
   const handleGenerate = () => {
     if (!file) return
-    // Store file in sessionStorage-friendly way via object URL key + navigate
-    // Processing page will pick it up from the navigate state
     navigate('/processing', { state: { file, fileName: file.name } })
   }
 
@@ -283,9 +283,14 @@ export default function Upload() {
     <div className="relative min-h-dvh flex flex-col items-center justify-center px-4 py-12 overflow-hidden">
       <Aurora />
 
+      {/* Theme toggle – top-right corner */}
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Hero */}
       <div className="relative z-10 text-center max-w-2xl w-full">
-<h1 className="text-5xl sm:text-6xl font-black text-stone-800 leading-tight mb-4 tracking-tight">
+        <h1 className="text-5xl sm:text-6xl font-black leading-tight mb-4 tracking-tight" style={{ color: 'var(--text-base)' }}>
           <SplitText text="HopIt." className="block" />
           <span className="block text-orange-500">
             <SplitText text="Play It." />
@@ -296,7 +301,8 @@ export default function Upload() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="text-stone-600 text-lg sm:text-xl mb-10"
+          className="text-lg sm:text-xl mb-10"
+          style={{ color: 'var(--text-secondary)' }}
         >
           Draw a platformer on grid paper. Take a photo. Watch it come alive.
         </motion.p>
@@ -308,10 +314,10 @@ export default function Upload() {
           transition={{ delay: 0.7 }}
           className="mb-8"
         >
-          <p className="text-sm font-semibold text-stone-500 uppercase tracking-widest mb-1">
+          <p className="text-sm font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
             What to draw on your grid paper
           </p>
-          <p className="text-xs text-stone-400 mb-3">Use these symbols so the AI knows what each cell means</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Use these symbols so the AI knows what each cell means</p>
           <div className="flex flex-wrap justify-center gap-3">
             {LEGEND.map((item, i) => (
               <motion.div
@@ -352,22 +358,21 @@ export default function Upload() {
                   onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={onDrop}
-                  className={`
-                    flex flex-col items-center justify-center gap-3 p-8 rounded-3xl
-                    border-2 border-dashed cursor-pointer transition-all duration-200
-                    backdrop-blur-sm shadow-lg
-                    ${dragOver
-                      ? 'border-orange-400 bg-orange-50 scale-[1.02]'
-                      : 'border-stone-300 bg-white/60 hover:border-orange-300 hover:bg-white/80 hover:scale-[1.02]'
-                    }
-                  `}
+                  className="flex flex-col items-center justify-center gap-3 p-8 rounded-3xl
+                             border-2 border-dashed cursor-pointer transition-all duration-200
+                             backdrop-blur-sm shadow-lg"
+                  style={{
+                    background: dragOver ? 'var(--bg-glass-drag)' : 'var(--bg-glass)',
+                    borderColor: dragOver ? '#f97316' : 'var(--border-ui)',
+                    transform: dragOver ? 'scale(1.02)' : undefined,
+                  }}
                 >
                   <div className="w-14 h-14 rounded-2xl bg-orange-100 flex items-center justify-center">
                     <UploadIcon size={26} className="text-orange-500" />
                   </div>
                   <div className="text-center">
-                    <p className="font-bold text-stone-700 text-base">Upload</p>
-                    <p className="text-xs text-stone-400 mt-1">Browse or drag a photo</p>
+                    <p className="font-bold text-base" style={{ color: 'var(--text-secondary)' }}>Upload</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Browse or drag a photo</p>
                   </div>
                 </div>
 
@@ -379,16 +384,19 @@ export default function Upload() {
                   onClick={() => setCameraOpen(true)}
                   onKeyDown={(e) => e.key === 'Enter' && setCameraOpen(true)}
                   className="flex flex-col items-center justify-center gap-3 p-8 rounded-3xl
-                             border-2 border-dashed border-stone-300 bg-white/60
-                             hover:border-sky-300 hover:bg-sky-50/60 hover:scale-[1.02]
-                             cursor-pointer transition-all duration-200 backdrop-blur-sm shadow-lg"
+                             border-2 border-dashed cursor-pointer transition-all duration-200
+                             backdrop-blur-sm shadow-lg hover:scale-[1.02]"
+                  style={{
+                    background: 'var(--bg-glass)',
+                    borderColor: 'var(--border-ui)',
+                  }}
                 >
                   <div className="w-14 h-14 rounded-2xl bg-sky-100 flex items-center justify-center">
                     <Camera size={26} className="text-sky-500" />
                   </div>
                   <div className="text-center">
-                    <p className="font-bold text-stone-700 text-base">Camera</p>
-                    <p className="text-xs text-stone-400 mt-1">Take a photo now</p>
+                    <p className="font-bold text-base" style={{ color: 'var(--text-secondary)' }}>Camera</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Take a photo now</p>
                   </div>
                 </div>
               </motion.div>
@@ -399,8 +407,8 @@ export default function Upload() {
                 initial={{ opacity: 0, scale: 0.97 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                className="relative rounded-3xl border-2 border-orange-300 bg-white/80
-                           backdrop-blur-sm shadow-xl overflow-hidden"
+                className="relative rounded-3xl border-2 border-orange-300 backdrop-blur-sm shadow-xl overflow-hidden"
+                style={{ background: 'var(--bg-glass-hover)' }}
               >
                 <img
                   src={preview}
@@ -415,12 +423,12 @@ export default function Upload() {
                 >
                   <X size={16} />
                 </button>
-                <p className="text-sm text-stone-500 pb-3 px-4 truncate">{file?.name}</p>
+                <p className="text-sm pb-3 px-4 truncate" style={{ color: 'var(--text-muted)' }}>{file?.name}</p>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Hidden file input for upload option */}
+          {/* Hidden file input */}
           <input
             ref={inputRef}
             type="file"
@@ -438,8 +446,8 @@ export default function Upload() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 role="alert"
-                className="mt-3 flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-200
-                           text-red-700 text-sm"
+                className="mt-3 flex items-center gap-2 px-4 py-3 rounded-xl
+                           bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
               >
                 <AlertCircle size={16} className="flex-shrink-0" />
                 {error}
@@ -462,21 +470,23 @@ export default function Upload() {
               </motion.div>
             )}
           </AnimatePresence>
-        {/* Demo picker trigger */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.1 }}
-          className="mt-6 text-center"
-        >
-          <button
-            onClick={() => setDemoPicker(true)}
-            className="inline-flex items-center gap-2 text-sm text-stone-400 hover:text-orange-500 transition-colors"
+
+          {/* Demo picker trigger */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.1 }}
+            className="mt-6 text-center"
           >
-            <Gamepad2 size={15} />
-            Browse demo levels
-          </button>
-        </motion.div>
+            <button
+              onClick={() => setDemoPicker(true)}
+              className="inline-flex items-center gap-2 text-sm hover:text-orange-500 transition-colors"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <Gamepad2 size={15} />
+              Browse demo levels
+            </button>
+          </motion.div>
         </motion.div>
       </div>
     </div>

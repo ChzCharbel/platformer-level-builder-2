@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import ThemeToggle from '../components/bits/ThemeToggle'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -27,7 +28,6 @@ function useRotatingText(items, interval = 1800) {
 function SkeletonLevel() {
   const cols = 18
   const rows = 10
-  // Fixed seed so it looks like a plausible level
   const platforms = [
     [8,9],[9,9],[10,9],[11,9],[12,9],[13,9],[14,9],[15,9],[16,9],[17,9],
     [0,9],[1,9],[2,9],[3,9],[4,9],[5,9],[6,9],[7,9],
@@ -43,8 +43,8 @@ function SkeletonLevel() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ delay: 0.8 }}
-      className="mt-10 rounded-2xl overflow-hidden border border-white/20 shadow-inner"
-      style={{ width: cols * 20, maxWidth: '100%' }}
+      className="mt-10 rounded-2xl overflow-hidden shadow-inner"
+      style={{ width: cols * 20, maxWidth: '100%', border: '1px solid var(--border-ui)' }}
       aria-hidden="true"
     >
       <div
@@ -53,7 +53,7 @@ function SkeletonLevel() {
           gridTemplateColumns: `repeat(${cols}, 20px)`,
           gridTemplateRows: `repeat(${rows}, 20px)`,
           gap: 1,
-          background: '#1e1b2e',
+          background: 'var(--bg-card)',
           padding: 4,
         }}
       >
@@ -98,20 +98,17 @@ export default function Processing() {
   const [uploadError, setUploadError] = useState(null)
   const didUpload = useRef(false)
 
-  // Redirect to home if arrived without a file
   useEffect(() => {
     if (!state?.file) {
       navigate('/', { replace: true })
     }
   }, [state, navigate])
 
-  // Elapsed timer
   useEffect(() => {
     const id = setInterval(() => setElapsed((e) => e + 1), 1000)
     return () => clearInterval(id)
   }, [])
 
-  // POST the image
   useEffect(() => {
     if (!state?.file || didUpload.current) return
     didUpload.current = true
@@ -141,7 +138,6 @@ export default function Processing() {
           throw new Error('The level appears to be empty. Make sure your sketch has clear symbols.')
         }
 
-        // Persist level to localStorage with a simple ID
         const id = Math.random().toString(36).slice(2, 8)
         localStorage.setItem(`level_${id}`, JSON.stringify(json))
         navigate(`/play/${id}`, { replace: true })
@@ -155,15 +151,18 @@ export default function Processing() {
 
   if (uploadError) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0f0e1a]">
+      <div className="relative min-h-dvh flex flex-col items-center justify-center px-6" style={{ background: 'var(--bg-base)' }}>
+        <div className="absolute top-4 right-4 z-20">
+          <ThemeToggle />
+        </div>
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="max-w-md w-full text-center"
         >
           <div className="text-6xl mb-4">😬</div>
-          <h2 className="text-2xl font-bold text-white mb-3">Something went wrong</h2>
-          <p className="text-stone-400 mb-8">{uploadError}</p>
+          <h2 className="text-2xl font-bold mb-3" style={{ color: 'var(--text-base)' }}>Something went wrong</h2>
+          <p className="mb-8" style={{ color: 'var(--text-muted)' }}>{uploadError}</p>
           <button
             onClick={() => navigate('/')}
             className="px-8 py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl
@@ -177,7 +176,11 @@ export default function Processing() {
   }
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0f0e1a]">
+    <div className="relative min-h-dvh flex flex-col items-center justify-center px-6" style={{ background: 'var(--bg-base)' }}>
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Spinner ring */}
       <motion.div
         initial={{ opacity: 0, scale: 0.7 }}
@@ -207,14 +210,15 @@ export default function Processing() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -20, opacity: 0 }}
             transition={{ duration: 0.35 }}
-            className="text-white text-xl font-semibold text-center"
+            className="text-xl font-semibold text-center"
+            style={{ color: 'var(--text-base)' }}
           >
             {currentMessage}
           </motion.p>
         </AnimatePresence>
       </div>
 
-      <p className="text-stone-500 text-sm mt-3">
+      <p className="text-sm mt-3" style={{ color: 'var(--text-muted)' }}>
         {elapsed < 5
           ? 'AI is analyzing your sketch...'
           : elapsed < 12
@@ -222,7 +226,6 @@ export default function Processing() {
             : 'Hang tight, the AI is thinking hard...'}
       </p>
 
-      {/* Skeleton level appears after 8s to keep engagement */}
       {elapsed >= 8 && <SkeletonLevel />}
     </div>
   )

@@ -6,6 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HopIt - Draw a Level, Play It Instantly</title>
     <meta name="description" content="Sketch a platformer level on paper and play it in seconds. Powered by AI." />
+    <script>
+      (function () {
+        var p = localStorage.getItem('theme-preference') || 'system';
+        var t = p === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : p;
+        document.documentElement.dataset.theme = t;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

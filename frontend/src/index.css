@@ -1,5 +1,90 @@
 @import "tailwindcss";
 
+/* ─── Theme tokens ─────────────────────────────────────────── */
+:root {
+  /* dark (default) */
+  --bg-base:         #0f0e1a;
+  --bg-primary:      #0d0b1e;
+  --bg-topbar:       #16142a;
+  --bg-subtle:       #16132a;
+  --bg-card:         #1e1b2e;
+  --bg-tooltip:      #10102a;
+  --bg-glass:        rgba(13, 11, 30, 0.70);
+  --bg-glass-hover:  rgba(13, 11, 30, 0.85);
+  --bg-glass-drag:   rgba(60, 20, 10, 0.70);
+  --text-base:       #ffffff;
+  --text-secondary:  #d6d3d1;
+  --text-muted:      #a8a29e;
+  --border-ui:       rgba(255, 255, 255, 0.10);
+  /* K2 panel */
+  --k2-heading:      #c4b5fd;
+  --k2-label:        #8b5cf6;
+  --k2-mono:         rgba(196, 181, 253, 0.70);
+  --k2-win:          #6ee7b7;
+  --k2-lose:         #fca5a5;
+  --k2-tip-label:    rgba(251, 191, 36, 0.80);
+  --k2-tip-title:    #fcd34d;
+  --k2-tip-pos:      rgba(245, 158, 11, 0.50);
+  --k2-body:         #9ca3af;
+  --k2-hard-label:   rgba(248, 113, 113, 0.80);
+  --k2-hard-pos:     rgba(239, 68, 68, 0.50);
+  --k2-error-title:  #c4b5fd;
+  /* aurora – dark: deep indigo/violet */
+  --aurora-base:        #0c0b18;
+  --aurora-b1-inner:    #3730a3;
+  --aurora-b1-outer:    #1e1b4b;
+  --aurora-b2-inner:    #4c1d95;
+  --aurora-b2-outer:    #2e1065;
+  --aurora-b3-inner:    #312e81;
+  --aurora-b3-outer:    #1e1b4b;
+  --aurora-grid:        #2a2640;
+  --aurora-b1-opacity:  0.50;
+  --aurora-b2-opacity:  0.40;
+  --aurora-b3-opacity:  0.30;
+}
+
+[data-theme="light"] {
+  --bg-base:         #dedad3;
+  --bg-primary:      #e8e4dd;
+  --bg-topbar:       #d4d0c8;
+  --bg-subtle:       #cac6be;
+  --bg-card:         #e8e4dd;
+  --bg-tooltip:      #e8e4dd;
+  --bg-glass:        rgba(232, 228, 221, 0.80);
+  --bg-glass-hover:  rgba(232, 228, 221, 0.95);
+  --bg-glass-drag:   rgba(255, 220, 180, 0.70);
+  --text-base:       #1c1917;
+  --text-secondary:  #3a3530;
+  --text-muted:      #6b6560;
+  --border-ui:       rgba(0, 0, 0, 0.15);
+  /* K2 panel */
+  --k2-heading:      #4c1d95;
+  --k2-label:        #5b21b6;
+  --k2-mono:         #3b0764;
+  --k2-win:          #065f46;
+  --k2-lose:         #991b1b;
+  --k2-tip-label:    #b45309;
+  --k2-tip-title:    #92400e;
+  --k2-tip-pos:      #a16207;
+  --k2-body:         #44403c;
+  --k2-hard-label:   #b91c1c;
+  --k2-hard-pos:     #b91c1c;
+  --k2-error-title:  #5b21b6;
+  /* aurora – light: warm amber/orange */
+  --aurora-base:        #fef9f0;
+  --aurora-b1-inner:    #fed7aa;
+  --aurora-b1-outer:    #fb923c;
+  --aurora-b2-inner:    #fde68a;
+  --aurora-b2-outer:    #fbbf24;
+  --aurora-b3-inner:    #fdba74;
+  --aurora-b3-outer:    #f97316;
+  --aurora-grid:        #78716c;
+  --aurora-b1-opacity:  0.40;
+  --aurora-b2-opacity:  0.35;
+  --aurora-b3-opacity:  0.25;
+}
+/* ──────────────────────────────────────────────────────────── */
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
