@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Share2, RefreshCw, Home, Star, ChevronRight, ChevronLeft, Brain, CheckCircle, XCircle, Lightbulb, AlertTriangle, Cpu } from 'lucide-react'
+import ThemeToggle from '../components/bits/ThemeToggle'
 
 // ──────────────────────────────────────────────
 // CONSTANTS
@@ -172,8 +173,8 @@ function Toast({ message, onDone }) {
       initial={{ y: 20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 20, opacity: 0 }}
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 bg-stone-800 text-white
-                 rounded-2xl text-sm font-semibold shadow-xl z-50"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl text-sm font-semibold shadow-xl z-50"
+      style={{ background: 'var(--bg-card)', color: 'var(--text-base)', border: '1px solid var(--border-ui)' }}
     >
       {message}
     </motion.div>
@@ -188,15 +189,16 @@ function SliderRow({ label, id, min, max, step, value, decimals = 0, onChange })
     <div className="flex flex-col gap-1">
       <div className="flex justify-between text-[10px]">
         <span className="text-stone-500">{label}</span>
-        <span className="text-stone-200 font-bold">{Number(value).toFixed(decimals)}</span>
+        <span className="font-bold" style={{ color: 'var(--text-secondary)' }}>{Number(value).toFixed(decimals)}</span>
       </div>
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-[3px] appearance-none rounded bg-[#2a2a4a] outline-none cursor-pointer
+        className="w-full h-[3px] appearance-none rounded outline-none cursor-pointer
                    [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3
                    [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full
                    [&::-webkit-slider-thumb]:bg-orange-400 [&::-webkit-slider-thumb]:cursor-pointer"
+        style={{ background: 'var(--bg-subtle)' }}
       />
     </div>
   )
@@ -648,12 +650,20 @@ export default function Play() {
       camY = Math.max(0, Math.min(camY, levelH - gameH))
       camRef.current = { x: camX, y: camY }
 
+      // Theme-aware canvas colors
+      const isLight = document.documentElement.dataset.theme === 'light'
+      const c_bg      = isLight ? '#dedad3' : '#1e1b2e'
+      const c_label   = isLight ? '#d4d0c8' : '#16142a'
+      const c_grid    = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.03)'
+      const c_border  = isLight ? 'rgba(0,0,0,0.18)' : 'rgba(122,162,247,0.25)'
+      const c_coords  = isLight ? '#7a756e' : '#4a4a6a'
+
       // Background
-      ctx.fillStyle = '#1e1b2e'
+      ctx.fillStyle = c_bg
       ctx.fillRect(0, 0, W, H)
 
       // Label margin backgrounds
-      ctx.fillStyle = '#16142a'
+      ctx.fillStyle = c_label
       ctx.fillRect(0, 0, LABEL_LEFT, H)
       ctx.fillRect(0, 0, W, LABEL_TOP)
 
@@ -664,7 +674,7 @@ export default function Play() {
       ctx.clip()
 
       // Grid faint lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)'
+      ctx.strokeStyle = c_grid
       ctx.lineWidth = 1
       const startCol = Math.floor(camX / TILE)
       const endCol   = Math.ceil((camX + gameW) / TILE)
@@ -896,12 +906,12 @@ export default function Play() {
       ctx.restore() // end clip
 
       // Level border
-      ctx.strokeStyle = 'rgba(122,162,247,0.25)'
+      ctx.strokeStyle = c_border
       ctx.lineWidth = 1
       ctx.strokeRect(LABEL_LEFT, LABEL_TOP, gameW, gameH)
 
       // ── Coordinate labels ──
-      ctx.fillStyle = '#4a4a6a'
+      ctx.fillStyle = c_coords
       ctx.font = '9px monospace'
 
       // Column numbers every 5
@@ -1069,9 +1079,9 @@ export default function Play() {
 
   if (loadError) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0f0e1a]">
+      <div className="min-h-dvh flex flex-col items-center justify-center px-6" style={{ background: 'var(--bg-base)' }}>
         <div className="text-6xl mb-4">🗺️</div>
-        <h2 className="text-2xl font-bold text-white mb-3">Level not found</h2>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: 'var(--text-base)' }}>Level not found</h2>
         <p className="text-stone-400 mb-8 text-center max-w-sm">{loadError}</p>
         <button onClick={() => navigate('/')} className="px-8 py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl transition-colors text-lg">
           Draw a New Level
@@ -1082,25 +1092,29 @@ export default function Play() {
 
   if (!levelData) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-[#0f0e1a]">
-        <div className="text-white text-lg animate-pulse">Loading level...</div>
+      <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+        <div className="text-lg animate-pulse" style={{ color: 'var(--text-base)' }}>Loading level...</div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-dvh bg-[#0f0e1a] overflow-hidden">
+    <div className="flex h-dvh overflow-hidden" style={{ background: 'var(--bg-base)' }}>
 
       {/* ── Physics Sidebar ── */}
       <div className={`flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ${physPanelOpen ? 'w-52' : 'w-0'}`}>
-      <div className={`w-52 flex-shrink-0 flex flex-col p-4 gap-4 overflow-y-auto h-full transition-colors duration-300 ${
-        isDevMode
-          ? 'bg-[#060d06] border-r border-[#00ff41]/30'
-          : 'bg-[#0d0b1e] border-r border-white/10'
-      }`}>
-        <p className={`text-[10px] font-bold tracking-widest uppercase border-b pb-2 font-mono ${
-          isDevMode ? 'text-[#00ff41] border-[#00ff41]/30' : 'text-orange-400 border-white/10'
-        }`}>
+      <div
+        className={`w-52 flex-shrink-0 flex flex-col p-4 gap-4 overflow-y-auto h-full transition-colors duration-300 ${
+          isDevMode ? 'bg-[#060d06] border-r border-[#00ff41]/30' : 'border-r'
+        }`}
+        style={isDevMode ? {} : { background: 'var(--bg-primary)', borderColor: 'var(--border-ui)' }}
+      >
+        <p
+          className={`text-[10px] font-bold tracking-widest uppercase border-b pb-2 font-mono ${
+            isDevMode ? 'text-[#00ff41] border-[#00ff41]/30' : 'text-orange-400'
+          }`}
+          style={isDevMode ? {} : { borderColor: 'var(--border-ui)' }}
+        >
           {isDevMode ? '> PHYSICS_SYS' : 'Physics Tuner'}
         </p>
         <div className={`flex flex-col gap-4 ${isDevMode ? '[&_span]:font-mono [&_span]:text-[#00ff41]' : ''}`}>
@@ -1136,12 +1150,14 @@ export default function Play() {
       <div className="flex flex-col flex-1 overflow-hidden">
 
         {/* Top bar */}
-        <div className="flex items-center gap-3 px-4 py-2 bg-[#16142a] border-b border-white/10 flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 py-2 border-b flex-shrink-0" style={{ background: 'var(--bg-topbar)', borderColor: 'var(--border-ui)' }}>
           <button onClick={() => navigate('/')} aria-label="Go home"
-            className="p-2 rounded-lg text-stone-400 hover:text-white hover:bg-white/10 transition-colors">
+            className="p-2 rounded-lg text-stone-400 hover:bg-white/10 transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+          >
             <Home size={18} />
           </button>
-          <h1 className="text-sm font-bold text-white truncate flex-1">{levelData.title || 'Your Level'}</h1>
+          <h1 className="text-sm font-bold truncate flex-1" style={{ color: 'var(--text-base)' }}>{levelData.title || 'Your Level'}</h1>
           <div className="flex items-center gap-0.5" aria-label={`Difficulty: ${difficulty} out of 5 stars`}>
             {Array.from({ length: 5 }, (_, i) => (
               <Star key={i} size={14} className={i < difficulty ? 'text-amber-400 fill-amber-400' : 'text-stone-600'} />
@@ -1172,17 +1188,20 @@ export default function Play() {
             {isDevMode ? '> DEV: ON_' : '> DEV'}
           </button>
           <button onClick={handleShare} aria-label="Share this level"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-stone-300 hover:bg-white/20 hover:text-white transition-colors text-sm font-medium">
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm font-medium"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             <Share2 size={14} /> Share
           </button>
           <button onClick={() => navigate('/')} aria-label="Create a new level"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-300 transition-colors text-sm font-medium">
             <RefreshCw size={14} /> New Level
           </button>
+          <ThemeToggle />
         </div>
 
         {/* HUD */}
-        <div className="text-center text-[11px] text-stone-600 py-1 flex-shrink-0">
+        <div className="text-center text-[11px] py-1 flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
           Arrow Keys / WASD to move · Space / Up to jump · R to reset
         </div>
 
@@ -1207,11 +1226,11 @@ export default function Play() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="fixed z-50 pointer-events-none bg-[#10102a] border border-[#7aa2f7] rounded-xl
+                  className="fixed z-50 pointer-events-none border border-[#7aa2f7] rounded-xl
                              px-3 py-2 max-w-[220px] shadow-xl"
-                  style={{ left: tooltipPos.x + 14, top: tooltipPos.y - 10 }}
+                  style={{ background: 'var(--bg-tooltip)', left: tooltipPos.x + 14, top: tooltipPos.y - 10 }}
                 >
-                  <p className="text-[11px] font-bold text-white mb-1">{hoveredSuggestion.problem}</p>
+                  <p className="text-[11px] font-bold mb-1" style={{ color: 'var(--text-base)' }}>{hoveredSuggestion.problem}</p>
                   <p className="text-[10px] text-stone-400 leading-relaxed">{hoveredSuggestion.suggestion}</p>
                 </motion.div>
               )}
@@ -1225,10 +1244,12 @@ export default function Play() {
                   <motion.div
                     initial={{ scale: 0.7, y: 30 }} animate={{ scale: 1, y: 0 }}
                     transition={{ type: 'spring', stiffness: 250, damping: 20 }}
-                    className="bg-[#1e1b2e] border border-white/20 rounded-3xl p-10 text-center shadow-2xl max-w-sm mx-4">
+                    className="rounded-3xl p-10 text-center shadow-2xl max-w-sm mx-4"
+                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-ui)' }}
+                  >
                     <div className="text-6xl mb-4">🎉</div>
-                    <h2 className="text-3xl font-black text-white mb-2">You Win!</h2>
-                    <p className="text-stone-400 mb-1">Time: <span className="text-white font-bold">{winTime.toFixed(1)}s</span></p>
+                    <h2 className="text-3xl font-black mb-2" style={{ color: 'var(--text-base)' }}>You Win!</h2>
+                    <p className="text-stone-400 mb-1">Time: <span className="font-bold" style={{ color: 'var(--text-base)' }}>{winTime.toFixed(1)}s</span></p>
                     {score > 0 && <p className="text-amber-400 mb-6">Coins: <span className="font-bold">{score}</span></p>}
                     <div className="flex flex-col gap-3 mt-6">
                       <button
@@ -1246,11 +1267,13 @@ export default function Play() {
                         Play Again
                       </button>
                       <button onClick={handleShare}
-                        className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl transition-colors flex items-center justify-center gap-2">
+                        className="px-6 py-3 bg-white/10 hover:bg-white/20 font-semibold rounded-2xl transition-colors flex items-center justify-center gap-2"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
                         <Share2 size={16} /> Share This Level
                       </button>
                       <button onClick={() => navigate('/')}
-                        className="px-6 py-3 text-stone-400 hover:text-white font-medium transition-colors text-sm">
+                        className="px-6 py-3 text-stone-400 font-medium transition-colors text-sm hover:text-orange-400">
                         Draw a New Level
                       </button>
                     </div>
@@ -1261,10 +1284,13 @@ export default function Play() {
           </div>
 
           {/* K2 Analysis Panel */}
-          <div className={`flex flex-col bg-[#0d0b1e] border-l border-white/10 transition-all duration-300 overflow-hidden flex-shrink-0 ${panelOpen ? 'w-72' : 'w-0'}`}>
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10 flex-shrink-0">
-              <Brain size={14} className="text-violet-400" />
-              <span className="text-xs font-bold text-violet-300 uppercase tracking-widest flex-1">K2 Analysis</span>
+          <div
+            className={`flex flex-col border-l transition-all duration-300 overflow-hidden flex-shrink-0 ${panelOpen ? 'w-72' : 'w-0'}`}
+            style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-ui)' }}
+          >
+            <div className="flex items-center gap-2 px-3 py-2 border-b flex-shrink-0" style={{ borderColor: 'var(--border-ui)' }}>
+              <Brain size={14} style={{ color: 'var(--k2-label)' }} />
+              <span className="text-xs font-bold uppercase tracking-widest flex-1" style={{ color: 'var(--k2-heading)' }}>K2 Analysis</span>
               {k2Phase === 'thinking' && (
                 <span className="flex gap-0.5">
                   {[0,1,2].map(i => (
@@ -1281,8 +1307,8 @@ export default function Play() {
             <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
               {k2Thinking && (
                 <div>
-                  <p className="text-[10px] font-semibold text-violet-500 uppercase tracking-widest mb-1">Reasoning</p>
-                  <div ref={thinkScrollRef} className="bg-[#16132a] rounded-lg p-2 max-h-40 overflow-y-auto font-mono text-[10px] text-violet-300/70 leading-relaxed whitespace-pre-wrap">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--k2-label)' }}>Reasoning</p>
+                  <div ref={thinkScrollRef} className="rounded-lg p-2 max-h-40 overflow-y-auto font-mono text-[10px] leading-relaxed whitespace-pre-wrap" style={{ background: 'var(--bg-subtle)', color: 'var(--k2-mono)' }}>
                     {k2Thinking}
                   </div>
                 </div>
@@ -1294,26 +1320,26 @@ export default function Play() {
                     {k2Result.solvable
                       ? <CheckCircle size={16} className="text-emerald-400 flex-shrink-0" />
                       : <XCircle    size={16} className="text-red-400 flex-shrink-0" />}
-                    <span className={`font-bold text-sm ${k2Result.solvable ? 'text-emerald-300' : 'text-red-300'}`}>
+                    <span className="font-bold text-sm" style={{ color: k2Result.solvable ? 'var(--k2-win)' : 'var(--k2-lose)' }}>
                       {k2Result.solvable ? 'Beatable!' : 'Not Beatable'}
                     </span>
                   </div>
 
                   {k2Result.kid_summary && (
-                    <p className="text-stone-300 leading-relaxed italic">"{k2Result.kid_summary}"</p>
+                    <p className="leading-relaxed italic" style={{ color: 'var(--text-secondary)' }}>"{k2Result.kid_summary}"</p>
                   )}
 
                   {k2Result.design_suggestions?.length > 0 && (
                     <div>
-                      <p className="text-[10px] font-semibold text-amber-400/80 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                        <Lightbulb size={10} /> Tips <span className="text-stone-600 normal-case">(hover ? on canvas)</span>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 flex items-center gap-1" style={{ color: 'var(--k2-tip-label)' }}>
+                        <Lightbulb size={10} /> Tips <span className="normal-case" style={{ color: 'var(--k2-body)' }}>(hover ? on canvas)</span>
                       </p>
                       <div className="space-y-1.5">
                         {k2Result.design_suggestions.map((s, i) => (
                           <div key={i} className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
-                            <p className="font-bold text-amber-300 text-[11px]">{s.problem}</p>
-                            <p className="text-stone-400 text-[10px] mt-0.5 leading-relaxed">{s.suggestion}</p>
-                            <p className="text-amber-500/50 text-[9px] mt-0.5">col {s.x}, row {s.y}</p>
+                            <p className="font-bold text-[11px]" style={{ color: 'var(--k2-tip-title)' }}>{s.problem}</p>
+                            <p className="text-[10px] mt-0.5 leading-relaxed" style={{ color: 'var(--k2-body)' }}>{s.suggestion}</p>
+                            <p className="text-[9px] mt-0.5" style={{ color: 'var(--k2-tip-pos)' }}>col {s.x}, row {s.y}</p>
                           </div>
                         ))}
                       </div>
@@ -1322,14 +1348,14 @@ export default function Play() {
 
                   {k2Result.bottlenecks?.length > 0 && (
                     <div>
-                      <p className="text-[10px] font-semibold text-red-400/80 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 flex items-center gap-1" style={{ color: 'var(--k2-hard-label)' }}>
                         <AlertTriangle size={10} /> Hard Spots
                       </p>
                       <div className="space-y-1.5">
                         {k2Result.bottlenecks.map((b, i) => (
                           <div key={i} className="bg-red-500/10 border border-red-500/20 rounded-lg p-2">
-                            <p className="text-stone-400 text-[10px] leading-relaxed">{b.reason}</p>
-                            <p className="text-red-500/50 text-[9px] mt-0.5">col {b.x}, row {b.y}</p>
+                            <p className="text-[10px] leading-relaxed" style={{ color: 'var(--k2-body)' }}>{b.reason}</p>
+                            <p className="text-[9px] mt-0.5" style={{ color: 'var(--k2-hard-pos)' }}>col {b.x}, row {b.y}</p>
                           </div>
                         ))}
                       </div>
@@ -1340,10 +1366,10 @@ export default function Play() {
 
               {k2Phase === 'error' && (
                 <div className="space-y-3">
-                  <div className="bg-[#16132a] rounded-xl p-4 text-center">
+                  <div className="rounded-xl p-4 text-center" style={{ background: 'var(--bg-subtle)' }}>
                     <div className="text-3xl mb-2">🤔</div>
-                    <p className="text-violet-300 font-semibold text-sm mb-1">K2 is thinking elsewhere</p>
-                    <p className="text-stone-500 text-[10px] leading-relaxed">The AI reasoning engine isn't connected yet — but the level is still fully playable!</p>
+                    <p className="font-semibold text-sm mb-1" style={{ color: 'var(--k2-error-title)' }}>K2 is thinking elsewhere</p>
+                    <p className="text-[10px] leading-relaxed" style={{ color: 'var(--k2-body)' }}>The AI reasoning engine isn't connected yet — but the level is still fully playable!</p>
                   </div>
                 </div>
               )}
@@ -1355,9 +1381,8 @@ export default function Play() {
           {/* Left panel toggle */}
           <button
             onClick={() => setPhysPanelOpen(o => !o)}
-            className="absolute top-1/2 -translate-y-1/2 z-10 w-5 h-10 bg-[#16132a] border border-white/10
-                       rounded-r-lg flex items-center justify-center text-stone-400 hover:text-white transition-colors"
-            style={{ left: '0px', transition: 'left 0.3s' }}
+            className="absolute top-1/2 -translate-y-1/2 z-10 w-5 h-10 rounded-r-lg flex items-center justify-center text-stone-400 hover:text-white transition-colors"
+            style={{ left: '0px', transition: 'left 0.3s', background: 'var(--bg-subtle)', border: '1px solid var(--border-ui)' }}
           >
             {physPanelOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
           </button>
@@ -1365,9 +1390,8 @@ export default function Play() {
           {/* Right panel toggle */}
           <button
             onClick={() => setPanelOpen(o => !o)}
-            className="absolute top-1/2 -translate-y-1/2 z-10 w-5 h-10 bg-[#16132a] border border-white/10
-                       rounded-l-lg flex items-center justify-center text-stone-400 hover:text-white transition-colors"
-            style={{ right: panelOpen ? '288px' : '0px', transition: 'right 0.3s' }}
+            className="absolute top-1/2 -translate-y-1/2 z-10 w-5 h-10 rounded-l-lg flex items-center justify-center text-stone-400 hover:text-white transition-colors"
+            style={{ right: panelOpen ? '288px' : '0px', transition: 'right 0.3s', background: 'var(--bg-subtle)', border: '1px solid var(--border-ui)' }}
           >
             {panelOpen ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
           </button>

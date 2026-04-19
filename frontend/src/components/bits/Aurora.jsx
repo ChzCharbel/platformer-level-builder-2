@@ -1,42 +1,46 @@
-// Aurora-style animated gradient background
-// Warm palette: orange, amber, rose, sky
+// Aurora-style animated gradient background — colors driven by CSS theme tokens
 export default function Aurora({ className = '' }) {
   return (
     <div
       className={`absolute inset-0 overflow-hidden pointer-events-none ${className}`}
       aria-hidden="true"
     >
-      {/* Base warm cream */}
-      <div className="absolute inset-0 bg-amber-50" />
+      {/* Base fill */}
+      <div className="absolute inset-0" style={{ background: 'var(--aurora-base)' }} />
 
-      {/* Blobs */}
+      {/* Blob 1 */}
       <div
-        className="aurora-blob absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full opacity-40"
+        className="aurora-blob absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full"
         style={{
-          background: 'radial-gradient(circle, #fed7aa 0%, #fb923c 40%, transparent 70%)',
+          background: 'radial-gradient(circle, var(--aurora-b1-inner) 0%, var(--aurora-b1-outer) 40%, transparent 70%)',
           filter: 'blur(60px)',
+          opacity: 'var(--aurora-b1-opacity)',
         }}
       />
+      {/* Blob 2 */}
       <div
-        className="aurora-blob-2 absolute -bottom-32 -right-16 w-[500px] h-[500px] rounded-full opacity-35"
+        className="aurora-blob-2 absolute -bottom-32 -right-16 w-[500px] h-[500px] rounded-full"
         style={{
-          background: 'radial-gradient(circle, #fde68a 0%, #fbbf24 40%, transparent 70%)',
+          background: 'radial-gradient(circle, var(--aurora-b2-inner) 0%, var(--aurora-b2-outer) 40%, transparent 70%)',
           filter: 'blur(80px)',
+          opacity: 'var(--aurora-b2-opacity)',
         }}
       />
+      {/* Blob 3 */}
       <div
-        className="aurora-blob-3 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] rounded-full opacity-25"
+        className="aurora-blob-3 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] rounded-full"
         style={{
-          background: 'radial-gradient(ellipse, #fdba74 0%, #f97316 30%, transparent 65%)',
+          background: 'radial-gradient(ellipse, var(--aurora-b3-inner) 0%, var(--aurora-b3-outer) 30%, transparent 65%)',
           filter: 'blur(90px)',
+          opacity: 'var(--aurora-b3-opacity)',
         }}
       />
-      {/* Subtle grid paper texture overlay */}
+      {/* Subtle grid paper texture */}
       <div
         className="absolute inset-0 opacity-[0.06]"
         style={{
           backgroundImage:
-            'linear-gradient(#78716c 1px, transparent 1px), linear-gradient(90deg, #78716c 1px, transparent 1px)',
+            'linear-gradient(var(--aurora-grid) 1px, transparent 1px), linear-gradient(90deg, var(--aurora-grid) 1px, transparent 1px)',
           backgroundSize: '28px 28px',
         }}
       />
